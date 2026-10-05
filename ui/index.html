@@ -571,22 +571,50 @@ function itemMenu(anchor, id, label, extra=[]){
    Router
    ========================================================================= */
 const main = $('#main');
+// Each sidebar section works like a tab: it remembers the last page you were on inside it
+// (e.g. the artist you had open) and the scroll position of each page. Clicking the section
+// you're already in takes you back to its top-level list.
+const SECTIONS = ['now','artists','albums','playlists','radio','settings'];
+const sectionOf = name => SECTIONS.includes(name) ? name : null;
+S.section = 'now';
+S.sectionRoute = {};     // section -> last route object
+S.sectionHistory = {};   // section -> back-stack for that section
+S.scrollMem = {};        // route key -> scrollTop
+const routeKey = r => r.name + (r.id ? '/'+r.id : '') + (r.q ? '?'+r.q : '');
+function saveScroll(){ if (S.route) S.scrollMem[routeKey(S.route)] = main.scrollTop; }
 function go(name, args={}, push=true){
-  if (push && S.route) S.history.push(S.route);
+  saveScroll();
+  const sec = sectionOf(name);
+  if (sec && sec !== S.section) { S.sectionHistory[S.section] = S.history; S.history = []; S.section = sec; }
+  else if (push && S.route) S.history.push(S.route);
   S.route = {name, ...args};
-  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.go===name || (name==='artist'&&b.dataset.go==='artists') || (name==='album'&&b.dataset.go==='albums')));
+  if (S.section) S.sectionRoute[S.section] = S.route;
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.go===S.section));
   main.scrollTop = 0;
-  render();
+  const want = S.scrollMem[routeKey(S.route)] || 0;
+  Promise.resolve(render()).then(()=>{ if (want) requestAnimationFrame(()=>{ main.scrollTop = want; }); });
   try{ history.replaceState(null,'','#'+name+(args.id?'/'+args.id:'')) }catch{}
 }
 function render(){
   const r=S.route;
-  ({now:viewNow, artists:viewArtists, albums:viewAlbums, artist:viewArtist, album:viewAlbum,
+  return ({now:viewNow, artists:viewArtists, albums:viewAlbums, artist:viewArtist, album:viewAlbum,
     playlists:viewPlaylists, radio:viewRadio, settings:viewSettings, search:viewSearch, missingart:viewMissingArt}[r.name]||viewNow)(r);
 }
 function backBtn(){ return S.history.length ? `<button class="pill" onclick="goBack()">${icon.back}Back</button>` : ''; }
-function goBack(){ const r=S.history.pop(); if (r) { S.route=r; go(r.name, r, false); } }
-document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>go(b.dataset.go));
+function goBack(){ const r=S.history.pop(); if (r) go(r.name, r, false); }
+function openSection(sec){
+  if (sec === S.section) {            // already here: back to the section's top-level list
+    if (S.route.name === sec) { main.scrollTop = 0; S.scrollMem[sec] = 0; return; }   // already at the top level: scroll up
+    S.history = [];
+    return go(sec, sec==='playlists' ? {sel:S.route.sel} : {}, false);
+  }
+  saveScroll();
+  S.sectionHistory[S.section] = S.history;
+  const r = S.sectionRoute[sec];
+  S.section = sec; S.history = S.sectionHistory[sec] || [];
+  if (r) go(r.name, r, false); else go(sec, {}, false);
+}
+document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>openSection(b.dataset.go));
 
 /* =========================================================================
    Views
@@ -840,13 +868,25 @@ $('#q').addEventListener('input', e=>{ clearTimeout(searchTimer); const v=e.targ
 $('#searchForm').onsubmit = e=>{ e.preventDefault(); const v=$('#q').value.trim(); if(v) go('search',{q:v}, S.route.name!=='search'); };
 
 /* ---- Playlists ---- */
-async function viewPlaylists({sel}={}){
-  loading();
-  let pls; try { pls = await getPlaylists(true); } catch { return offlineView(); }
-  sel = sel ?? S.route.sel ?? 0; if (sel>=pls.length) sel=0;
+// Remember the chosen playlist by name (indexes shift when playlists are added/removed).
+const lastPlaylistName = { get(){ try{ return localStorage.getItem('brennan.playlist'); }catch{ return null; } },
+                           set(n){ try{ localStorage.setItem('brennan.playlist', n); }catch{} } };
+let plTimer = null, plSig = '';
+async function viewPlaylists({sel, quiet}={}){
+  if (!quiet) loading();
+  let pls; try { pls = await getPlaylists(true); } catch { return quiet ? null : offlineView(); }
+  if (sel == null) sel = S.route.sel;
+  if (sel == null) { const n = lastPlaylistName.get(); const i = pls.findIndex(x=>x.name===n); sel = i>=0 ? i : 0; }
+  if (sel>=pls.length) sel=0;
   S.route.sel = sel;
   const p = pls[sel];
+  if (p) lastPlaylistName.set(p.name);
   let items=[]; try { items = await api('listplaylist',{id:ID.PLAYLIST+sel}); } catch {}
+  if (S.route.name!=='playlists') return;
+  const sig = JSON.stringify([pls, sel, items]);
+  if (quiet && sig === plSig) return;          // nothing changed
+  plSig = sig;
+  const keepScroll = quiet ? main.scrollTop : null;
   main.innerHTML = `<div class="view"><h1>Playlists</h1><p class="sub">${pls.length} playlists</p>
     <div class="split">
       <div class="plist">${pls.map((x,i)=>`<button data-i="${i}" class="${i===sel?'on':''}"><span>${esc(x.name)}</span><small>${x.length}</small></button>`).join('')}
@@ -861,7 +901,14 @@ async function viewPlaylists({sel}={}){
           <td class="dim" style="width:90px">${kind(t.id)}</td>
           <td class="a"><button class="rowbtn" data-m title="More">${icon.more}</button></td></tr>`).join('')}</table>`:'<div class="empty">This playlist is empty. Add tracks or albums from the library with ⋯ → Add to playlist.</div>'}
       </div></div></div>`;
-  main.querySelectorAll('.plist button[data-i]').forEach(b=>b.onclick=()=>{ S.route.sel=+b.dataset.i; viewPlaylists({sel:+b.dataset.i}); });
+  main.querySelectorAll('.plist button[data-i]').forEach(b=>b.onclick=()=>{ S.route.sel=+b.dataset.i; lastPlaylistName.set(pls[+b.dataset.i].name); viewPlaylists({sel:+b.dataset.i}); });
+  if (keepScroll != null) main.scrollTop = keepScroll;
+  markNowPlaying();
+  // The Brennan removes played tracks from the Queue (and other clients may edit playlists)
+  // without telling anyone, so re-check while this page is open.
+  clearInterval(plTimer);
+  plTimer = setInterval(()=>{ if (S.route.name!=='playlists' || document.hidden) { if (S.route.name!=='playlists') clearInterval(plTimer); return; }
+    if (!document.querySelector('.menu,.scrim')) viewPlaylists({sel:S.route.sel, quiet:true}); }, 5000);
   $('#newPl').onclick=async()=>{ const n=await prompt2('New playlist','Playlist name','Create'); if(!n) return; await api('newPlaylist',{},{name:n}); const after=await getPlaylists(true); viewPlaylists({sel:Math.max(0,after.findIndex(x=>x.name===n))}); };
   $('#plPlay').onclick=()=>play(ID.PLAYLIST+sel, p.name);
   $('#plMore').onclick=e=>openMenu(e.currentTarget,[
@@ -1154,7 +1201,10 @@ async function poll(){
   try {
     const st = await api('status');
     if (typeof st !== 'object') throw new Error('bad status');
+    const prevTrack = S.status?.trackid;
     S.status = st; failCount=0;
+    if (prevTrack && prevTrack !== st.trackid && S.route.name==='playlists' && !document.querySelector('.menu,.scrim'))
+      setTimeout(()=>viewPlaylists({sel:S.route.sel, quiet:true}), 600);
     if (S.output>0){
       if (!st.sonos || S.output>st.sonos.length) { S.output=0; }
       else S.sonosStatus = await api('sonosStatus',{sonos:S.output-1}).catch(()=>null);
@@ -1305,7 +1355,9 @@ $('#rescanBtn').onclick=rescan;
 (function boot(){
   const h=location.hash.slice(1).split('/'); const name=h[0]||'now', id=+h[1]||undefined;
   const valid=['now','artists','albums','artist','album','playlists','radio','settings','missingart'];
-  go(valid.includes(name)?name:'now', id?{id}:{}, false);
+  const start = valid.includes(name)?name:'now';
+  S.section = sectionOf(start) || ({artist:'artists', album:'albums', missingart:'albums'}[start]) || 'now';
+  go(start, id?{id}:{}, false);
   pollDevice(); poll();
   setInterval(()=>{ if (!document.hidden) poll(); }, 1000);
 })();
