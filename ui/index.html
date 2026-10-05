@@ -170,6 +170,20 @@ h2{font:650 18px/1.2 var(--display);margin:28px 0 12px}
 .np-vu{display:flex;gap:3px;height:34px;align-items:flex-end;margin-top:30px;opacity:.9}
 .np-vu i{width:6px;border-radius:2px;background:linear-gradient(0deg,var(--accent),#ffd892);height:4%;transition:height .25s ease}
 .np-extra{margin-top:20px;color:var(--text-3);font-size:13px}
+.np-upnext{margin-top:26px;max-width:620px;background:rgba(22,24,30,.72);border:1px solid var(--line);border-radius:var(--radius);padding:14px 10px 8px;backdrop-filter:blur(8px)}
+.np-upnext:empty{display:none}
+.np-upnext .head{display:flex;align-items:center;justify-content:space-between;padding:0 8px 8px}
+.np-upnext .head b{font:650 12px var(--font);letter-spacing:.1em;text-transform:uppercase;color:var(--text-2)}
+.np-upnext .head a{font-size:12.5px;color:var(--text-2)}
+.np-upnext .head a:hover{color:var(--accent)}
+.np-upnext ol{list-style:none;margin:0;padding:0}
+.np-upnext li{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px}
+.np-upnext li:hover{background:rgba(255,255,255,.05)}
+.np-upnext li .n{width:18px;text-align:right;color:var(--text-3);font:12px var(--mono)}
+.np-upnext li .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.np-upnext li .rowbtn{opacity:0}
+.np-upnext li:hover .rowbtn,.np-upnext li:focus-within .rowbtn{opacity:1}
+.np-upnext .more{padding:6px 8px 4px;font-size:12.5px;color:var(--text-3)}
 
 /* range sliders */
 input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;cursor:pointer;--p:0%}
@@ -449,7 +463,24 @@ const S = {
   cache:{ artists:null, albums:null, playlists:null, presets:null },
   route:{ name:'now' }, history:[], device:null,
 };
-try{ S.output = +(localStorage.getItem('brennan.output')||0) }catch{ S.output=0 }
+// The output is remembered by Sonos room NAME: the Brennan's list of rooms changes order
+// (and grows) over time, so a stored position can quietly point at a different room.
+try{ S.outputName = localStorage.getItem('brennan.outputName') || ''; localStorage.removeItem('brennan.output'); }catch{ S.outputName=''; }
+S.output = 0;
+// Some rooms appear more than once (e.g. a speaker plus a Port with the same room name), so a
+// choice is stored as name + which active entry of that name it was ("Den#1").
+function sonosChoices(st){
+  const names = st?.sonos || [], active = st?.sonosActive || [], count = {}, out = [];
+  names.forEach((n,i)=>{ if (!active[i]) return; const k = count[n] = (count[n]||0); count[n]++; out.push({name:n, k, index:i+1}); });
+  return out.map(c=>({...c, key:c.name+'#'+c.k, label: count[c.name]>1 ? `${c.name} (${c.k+1})` : c.name}));
+}
+function resolveOutput(st){
+  if (!S.outputName) { S.output = 0; return; }
+  const ch = sonosChoices(st);
+  const hit = ch.find(c=>c.key===S.outputName) || ch.find(c=>c.name===S.outputName.replace(/#\d+$/,''));
+  S.output = hit ? hit.index : 0;
+  S.outputLabel = hit ? hit.label : '';
+}
 
 /* =========================================================================
    Helpers
@@ -538,8 +569,72 @@ async function play(id, label){
   catch { toast('Couldn’t reach the Brennan'); }
 }
 async function queue(id, label){
-  try { await api('queueID', {id, ...sonosParam()}); S.cache.playlists=null; toast('Added to Queue'+(label?': '+label:'')); }
-  catch { toast('Couldn’t add to queue'); }
+  try { await api('queueID', {id, ...sonosParam()}); } catch { return toast('Couldn’t add to queue'); }
+  S.cache.playlists=null;
+  const what = label ? `“${cleanTrack(label)}”` : 'That';
+  // A Sonos room keeps its own queue on the speaker; the Brennan's Queue playlist stays empty.
+  if (S.output>0) { toast(`${what} sent to ${outputName()}’s own Sonos queue (not the Brennan Queue)`); return; }
+  // On the Brennan, the Queue playlist holds the track that's playing (first) plus what's
+  // waiting. Queueing while nothing is playing from the Queue starts that track straight away.
+  let q = null; try { q = await getQueue(); } catch {}
+  try { S.status = await api('status'); } catch {}
+  const up = upcoming(q);
+  if (!q) toast(`${what} added to Queue`);
+  else if (!up.length && S.status?.playlist==='Queue') toast(`${what} is playing now`);
+  else toast(`${what} added — ${up.length} track${up.length===1?'':'s'} up next`);
+  refreshUpNext(true);
+}
+// Queue items still to come: skip the first entry when it's the track playing right now.
+function upcoming(q){
+  const items = q?.items || [];
+  const st = S.status || {};
+  if (items.length && st.playlist==='Queue' && String(items[0].id)===String(st.trackid)) return items.slice(1);
+  return items;
+}
+// Current contents of the Brennan's "Queue" playlist (null if it doesn't exist).
+async function getQueue(){
+  const pls = await api('listplaylists');
+  const qi = pls.findIndex(p=>p.name==='Queue');
+  if (qi < 0) return null;
+  const items = await api('listplaylist',{id:ID.PLAYLIST+qi});
+  return {index: qi, items: Array.isArray(items) ? items : []};
+}
+let upNextBusy=false, upNextAt=0, upNextSig='';
+async function refreshUpNext(force){
+  const box = $('#npUpNext'); if (!box) return;
+  if (S.output>0) {                     // Sonos rooms play their own queue, which the Brennan can't list
+    const msg = `<div class="head"><b>Up next</b></div><div class="more">Playing on ${esc(outputName())} — tracks you queue go to that speaker's own queue, which can't be shown here.</div>`;
+    if (upNextSig !== 'sonos') { box.innerHTML = msg; upNextSig = 'sonos'; }
+    return;
+  }
+  if (upNextBusy || (!force && Date.now()-upNextAt < 5000)) return;
+  upNextBusy=true; upNextAt=Date.now();
+  let q=null; try { q = await getQueue(); } catch {} finally { upNextBusy=false; }
+  const el = $('#npUpNext'); if (!el) return;
+  const items = upcoming(q);
+  const sig = JSON.stringify([q?.index, items, S.status?.playlist, S.status?.trackid]);
+  if (sig === upNextSig) return; upNextSig = sig;
+  if (!items.length) { el.innerHTML=''; return; }
+  const fromQueue = S.status?.playlist === 'Queue';
+  const shown = items.slice(0,6);
+  el.innerHTML = `<div class="head"><b>${fromQueue?'Up next':'In your Queue'}</b><a href="#" id="unAll">See all</a></div>
+    <ol>${shown.map((t,i)=>`<li data-i="${i}"><span class="n">${i+1}</span><span class="t">${esc(cleanTrack(clean(t.name)))}</span>
+      <button class="rowbtn" data-p title="Play now">${icon.play}</button><button class="rowbtn" data-x title="Remove from Queue">${icon.trash}</button></li>`).join('')}</ol>
+    ${items.length>shown.length?`<div class="more">+ ${items.length-shown.length} more</div>`:''}`;
+  el.querySelector('#unAll').onclick = e => { e.preventDefault(); S.route && (S.sectionRoute.playlists = {name:'playlists', sel:q.index}); lastPlaylistName.set('Queue'); openSection('playlists'); };
+  el.querySelectorAll('li').forEach(li=>{
+    const i=+li.dataset.i, t=items[i];
+    li.querySelector('[data-p]').onclick = async()=>{ await api('startPlaylist',{playlist:ID.PLAYLIST+q.index, id:t.id, ...sonosParam()}).catch(()=>{}); toast('Playing '+cleanTrack(clean(t.name))); setTimeout(poll,400); setTimeout(()=>refreshUpNext(true),1200); };
+    li.querySelector('[data-x]').onclick = async()=>{
+      // re-check the position first: the Queue shifts as tracks start playing
+      const now = await getQueue().catch(()=>null);
+      const skip = now && now.items.length && S.status?.playlist==='Queue' && String(now.items[0].id)===String(S.status.trackid) ? 1 : 0;
+      const pos = now ? now.items.findIndex((x,k)=>k>=skip && x.id===t.id) : -1;
+      if (pos<0) { toast('That track already left the Queue'); return refreshUpNext(true); }
+      await api('deletePlaylistIndex',{playlist:now.index, index:pos}).catch(()=>{});
+      toast('Removed from Queue'); refreshUpNext(true);
+    };
+  });
 }
 async function getPlaylists(force){
   if (!S.cache.playlists || force) { const r = await api('listplaylists'); S.cache.playlists = r; return r; }
@@ -645,6 +740,7 @@ function viewNow(){
         </div>
         <div class="np-vu" id="npVu">${'<i></i>'.repeat(10)}</div>
         <div class="np-extra" id="npExtra"></div>
+        <div class="np-upnext" id="npUpNext"></div>
       </div>
     </div></div>`;
   $('#npPlay').onclick = togglePlay;
@@ -660,7 +756,7 @@ function viewNow(){
     if (st.cdloaded) items.push('-',{text:'Eject CD', run:()=>api('eject')});
     if (items.length) openMenu(e.currentTarget, items);
   };
-  S.lastTrackId=null; S.npArtKey=null;
+  S.lastTrackId=null; S.npArtKey=null; upNextSig=''; S.upNextTrack=null;
   updateUI();
 }
 
@@ -895,6 +991,7 @@ async function viewPlaylists({sel, quiet}={}){
         <div class="toolbar"><h2 style="margin:0">${esc(p?.name||'')}</h2><span class="spacer"></span>
           <button class="btn" id="plPlay" ${items.length?'':'disabled'}>${icon.play}Play</button>
           <button class="pill" id="plMore">${icon.more}</button></div>
+        ${S.output>0 && p?.name==='Queue' ? `<div class="af-note" style="margin:0 0 12px;color:var(--warn)">You're playing on <b>${esc(outputName())}</b>. Tracks you queue now go to that Sonos speaker's own queue, which the Brennan can't list. Switch the output (bottom right) to Brennan speakers to use this Queue.</div>` : ''}
         ${items.length?`<table class="tracks" id="pt">${items.map((t,i)=>`<tr data-i="${i}" data-id="${t.id}">
           <td class="n"><span class="num-txt">${i+1}</span><button class="rowbtn num-play" title="Play from here">${icon.play}</button></td>
           <td class="title">${esc(cleanTrack(clean(t.name)))}</td>
@@ -1175,14 +1272,13 @@ $('#muteBtn').onclick=()=>{ if (+vol.value>0){ S.muteFrom=vol.value; vol.value=0
 
 $('#outBtn').onclick=e=>{
   const st=S.status||{}; const names=st.sonos||[], active=st.sonosActive||[];
-  const items=[{label:'Play on'},{text:'Brennan speakers', on:S.output===0, run:()=>setOutput(0)}];
-  const seen=new Set();
-  names.forEach((n,i)=>{ if(!active[i]||seen.has(n)) return; seen.add(n); items.push({text:n, on:S.output===i+1, run:()=>setOutput(i+1)}); });
+  const items=[{label:'Play on'},{text:'Brennan speakers', on:S.output===0, run:()=>setOutput('')}];
+  sonosChoices(st).forEach(c=>items.push({text:c.label, on:S.output===c.index, run:()=>setOutput(c.key)}));
   if (names.length) items.push('-',{text:'Rescan Sonos', run:()=>{api('scanSonos'); toast('Looking for Sonos speakers…');}});
   openMenu(e.currentTarget, items);
 };
-function setOutput(n){ S.output=n; try{localStorage.setItem('brennan.output',n)}catch{}; S.sonosStatus=null; S.volDrag=false; updateUI(); toast('Output: '+outputName()); poll(); }
-function outputName(){ return S.output>0 ? (S.status?.sonos?.[S.output-1]||'Sonos') : 'Brennan speakers'; }
+function setOutput(name){ S.outputName=name||''; try{localStorage.setItem('brennan.outputName',S.outputName)}catch{}; resolveOutput(S.status); S.sonosStatus=null; S.volDrag=false; updateUI(); toast('Output: '+outputName()); poll(); refreshUpNext(true); }
+function outputName(){ return S.output>0 ? (S.outputLabel || S.outputName.replace(/#\d+$/,'') || 'Sonos') : 'Brennan speakers'; }
 
 document.addEventListener('keydown', e=>{
   if (e.target.matches('input,textarea,select') && e.key!=='Escape') return;
@@ -1205,10 +1301,8 @@ async function poll(){
     S.status = st; failCount=0;
     if (prevTrack && prevTrack !== st.trackid && S.route.name==='playlists' && !document.querySelector('.menu,.scrim'))
       setTimeout(()=>viewPlaylists({sel:S.route.sel, quiet:true}), 600);
-    if (S.output>0){
-      if (!st.sonos || S.output>st.sonos.length) { S.output=0; }
-      else S.sonosStatus = await api('sonosStatus',{sonos:S.output-1}).catch(()=>null);
-    }
+    resolveOutput(st);
+    if (S.output>0) S.sonosStatus = await api('sonosStatus',{sonos:S.output-1}).catch(()=>null);
     updateUI();
     if (main.querySelector('.view > h1') && /Can’t reach/.test(main.querySelector('.view > h1').textContent)) render();
   } catch (e) {
@@ -1322,6 +1416,7 @@ function updateUI(){
     $('#npVu').style.display = S.output>0 ? 'none':'flex';
     const extra=[]; if (st.recording) extra.push('● Recording'); if (st.cdloaded) extra.push('CD: '+st.cdstatus); if (st.alert) extra.push(st.alert);
     $('#npExtra').textContent = extra.join('  ·  ');
+    refreshUpNext(tkey !== S.upNextTrack); S.upNextTrack = tkey;
   }
   markNowPlaying();
 }
