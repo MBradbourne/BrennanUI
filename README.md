@@ -7,12 +7,16 @@ it through the same HTTP interface the unit's built-in web page uses.
 - **Now Playing** with large album art, seek, volume and a VU meter
 - **Library**: artists (A–Z), albums (cover grid), album and artist pages, search
 - **Playlists**: play, add, remove, create; queue anything
+- **Queue**: "Up next" on Now Playing, with play-now and remove; the Playlists page stays in
+  sync as the Brennan works through the queue
 - **Radio**: your presets plus the internet radio directory and station search
 - **Outputs**: switch between the Brennan's speakers and any Sonos room it sees
 - **Library fixes**: rename artists, albums and tracks; move an album to another artist
 - **Artwork**: search Apple Music, Deezer and MusicBrainz for covers; find albums with
   missing, placeholder or low-resolution art and fix them one by one
 - **Settings**: shuffle, sort order, segue, bass/treble, EQ, rip format
+- **Remembers where you were**: each sidebar section returns to the page, playlist and scroll
+  position you left it on
 
 > Not affiliated with or endorsed by Brennan. The unit's HTTP interface is undocumented,
 > so a future firmware update could change it. Built and tested against firmware
@@ -85,6 +89,37 @@ site), the launcher downloads the image and serves it to the Brennan for a few s
 a temporary server on your computer's network address. If your firewall is on, allow
 incoming connections for Python when asked.
 
+## The Queue
+
+The Brennan keeps queued tracks in a playlist called **Queue**, which only exists while
+something is queued. How it behaves (observed on firmware "B3 Aug 28 2025"):
+
+- Queueing while nothing is playing from the Queue starts that track straight away.
+- Queueing while the Queue is playing adds the track to the end.
+- The track that's playing stays first in the Queue; tracks drop off as the next one starts.
+- The Brennan doesn't announce any of this, so the UI re-reads the Queue when the track
+  changes and every few seconds while Now Playing or Playlists is open.
+
+Add to Queue tells you what happened ("is playing now" or "added — 3 tracks up next"), and
+**Up next** on Now Playing lists what's coming.
+
+## Sonos
+
+Use the output button (bottom right) to play on a Sonos room instead of the Brennan's own
+speakers. Things to know:
+
+- The choice is remembered by room name, because the Brennan's list of rooms changes order as
+  speakers come and go.
+- **Queueing while a Sonos room is the output sends tracks to that speaker's own queue**, not
+  the Brennan's Queue playlist, so they won't appear in Playlists or Up next. The UI says so
+  when this happens. Switch back to *Brennan speakers* to use the Brennan Queue.
+- Rooms can appear more than once. Stereo pairs, subs and surrounds report as several devices
+  with the same room name (only the lead one is offered), and the Brennan also keeps old
+  entries when a speaker gets a new network address. Duplicates that can both play are shown
+  as "Room (1)" and "Room (2)". **Rescan Sonos** in the output menu asks the Brennan to look
+  again; giving your Sonos speakers fixed addresses (DHCP reservations) in your router stops
+  stale entries building up.
+
 ## Files
 
 - `brennan.py`: launcher (discovery, local web server, API proxy). Standard library only.
@@ -102,6 +137,10 @@ incoming connections for Python when asked.
   permanent IDs: renames, moves, rips and artwork changes can renumber them. The launcher
   fingerprints the library (a "generation") and the UI drops anything cached, re-finds the
   page you're on by name, and refuses edits whose ID no longer matches the name on screen.
+- Playlist IDs are 4,000,000 + the playlist's position, so adding or removing a playlist
+  shifts the others; the UI remembers your selected playlist by name.
+- Sonos rooms are addressed by position in `status.sonos` (`sonos=<n>`, 1-based; 0 = the
+  Brennan's own speakers).
 - Keyboard: Space = play/pause, `/` = search, Shift+←/→ = previous/next.
 
 ## License
