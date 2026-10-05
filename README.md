@@ -98,7 +98,10 @@ incoming connections for Python when asked.
   `http://<brennan>/b2gci.fcgi?<query>`. The unit is order-sensitive: free-text parameters
   (`string=` for search, `name=` for renames) must come last.
 - Item IDs are namespaced: albums 1,000,000+, tracks 2,000,000+, artists 3,000,000+,
-  playlists 4,000,000+, presets 6,000,000+.
+  playlists 4,000,000+, presets 6,000,000+. They are positions in the unit's index, not
+  permanent IDs: renames, moves, rips and artwork changes can renumber them. The launcher
+  fingerprints the library (a "generation") and the UI drops anything cached, re-finds the
+  page you're on by name, and refuses edits whose ID no longer matches the name on screen.
 - Keyboard: Space = play/pause, `/` = search, Shift+←/→ = previous/next.
 
 ## License

@@ -14,6 +14,7 @@ Standard library only. Run:  python3 brennan.py   (Ctrl+C to stop)
 from __future__ import annotations
 
 import argparse
+import hashlib
 import ipaddress
 import json
 import os
@@ -307,6 +308,74 @@ class Device:
 # HTTP server
 # --------------------------------------------------------------------------- #
 
+# Commands that can change the library (and therefore the unit's item IDs).
+WRITE_CMDS = {"renameID", "moveID", "deleteID", "getArtFromURL", "artURL", "rip", "newRip",
+              "reindex", "scanDisk", "upload", "USBImport", "mixPlaylists"}
+
+
+class Library:
+    """Tracks a 'generation' fingerprint of the Brennan's library.
+
+    The unit's album/artist/track IDs are positions in its index, not permanent
+    identifiers: renaming, moving, ripping or deleting can renumber them. The UI
+    tags everything it caches (art URLs, lists, the artwork scan) with the
+    generation, and drops it all when the generation changes.
+    """
+
+    def __init__(self, device: "Device"):
+        self.device = device
+        self.lock = threading.Lock()
+        self.gen = "0"
+        self.edits = 0
+        self.sig = ""
+        self.albums: list = []
+        self._kick = threading.Event()
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def bump(self):
+        with self.lock:
+            self.edits += 1
+        self._kick.set()
+
+    def refresh(self) -> str:
+        ip = self.device.ip
+        if not ip:
+            return self.gen
+        t = int(time.time() * 1000)
+        try:
+            albums = artwork.device_call(ip, f"search&artists=N&tracks=N&radio=N&video=N&offset=0&count=20000&time={t}&string=", 30)
+            artists = artwork.device_call(ip, f"search&albums=N&tracks=N&radio=N&video=N&offset=0&count=20000&time={t}&string=", 30)
+        except Exception:
+            return self.gen
+        sig = hashlib.sha1(albums + b"|" + artists).hexdigest()
+        with self.lock:
+            try:
+                self.albums = json.loads(albums.decode("utf-8", "replace"))
+            except Exception:
+                pass
+            self.sig = sig
+            self.gen = hashlib.sha1(f"{sig}:{self.edits}".encode()).hexdigest()[:12]
+            return self.gen
+
+    def album_name(self, album_id: int) -> tuple[str, str] | None:
+        with self.lock:
+            for a in self.albums:
+                if a.get("id") == album_id:
+                    return a.get("album", ""), a.get("artist", "")
+        return None
+
+    def _loop(self):
+        while True:
+            self._kick.wait(timeout=2 if self.gen == "0" else 20)
+            if self._kick.is_set():
+                self._kick.clear()
+                time.sleep(1.5)          # let the unit finish re-indexing
+            old = self.gen
+            new = self.refresh()
+            if new != old and old != "0":
+                log(f"library changed (generation {new})")
+
+
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
         ".ico": "image/x-icon", ".json": "application/json"}
@@ -326,6 +395,7 @@ def sniff_image(body: bytes) -> str | None:
 
 class Handler(BaseHTTPRequestHandler):
     device: Device = None  # set at startup
+    library: "Library" = None
     missing: artwork.MissingScan = None  # set at startup
     server_version = "BrennanUI/1.0"
 
@@ -354,7 +424,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api":
             return self.proxy(parsed.query)
         if path == "/local/device":
-            return self.send_json(200, self.device.snapshot())
+            return self.send_json(200, {**self.device.snapshot(), "gen": self.library.gen})
         if path == "/local/art-search":
             q = urllib.parse.parse_qs(parsed.query)
             artist, album = q.get("artist", [""])[0], q.get("album", [""])[0]
@@ -362,7 +432,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(400, {"error": "artist or album required"})
             return self.send_json(200, artwork.search(artist, album))
         if path == "/local/art-scan":
-            return self.send_json(200, self.missing.snapshot())
+            return self.send_json(200, {**self.missing.snapshot(), "scan_gen": getattr(self.missing, "scan_gen", ""),
+                                        "gen": self.library.gen})
         return self.static(path)
 
     do_HEAD = do_GET
@@ -374,13 +445,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(413, {"error": "file too large"})
         body = self.rfile.read(length) if length else b"{}"
         if path == "/local/art-upload":
-            return self.art_set(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("id", ["0"])[0], data=body)
+            qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            return self.art_set(qs.get("id", ["0"])[0], data=body, expect=qs.get("expect", [""])[0])
         try:
             data = json.loads(body or b"{}")
         except Exception:
             data = {}
         if path == "/local/art-set":
-            return self.art_set(data.get("id"), url=str(data.get("url", "")).strip())
+            return self.art_set(data.get("id"), url=str(data.get("url", "")).strip(), expect=str(data.get("expect", "")))
         if path in ("/local/art-placeholder", "/local/art-not-placeholder"):
             if not self.device.ip:
                 return self.send_json(503, {"error": "device_unavailable"})
@@ -394,8 +466,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/local/art-scan":
             if not self.device.ip:
                 return self.send_json(503, {"error": "device_unavailable"})
+            self.missing.scan_gen = self.library.gen
             self.missing.start(self.device.ip)
-            return self.send_json(200, self.missing.snapshot())
+            return self.send_json(200, {**self.missing.snapshot(), "scan_gen": self.missing.scan_gen})
+        if path == "/local/library-refresh":
+            return self.send_json(200, {"gen": self.library.refresh()})
+        if path == "/local/verify-album":
+            # Is album `id` still the one called `expect`? (IDs can be renumbered.)
+            ok, actual = self.verify_album(data.get("id"), str(data.get("expect", "")))
+            return self.send_json(200 if ok else 409, {"ok": ok, "actual": actual})
         if path == "/local/rescan":
             self.device.scan(force=True)
             return self.send_json(200, self.device.snapshot())
@@ -410,7 +489,18 @@ class Handler(BaseHTTPRequestHandler):
                                   self.device.snapshot() if ok else {"error": f"No Brennan answered at {ip}"})
         self.send_json(404, {"error": "not found"})
 
-    def art_set(self, album_id, url: str | None = None, data: bytes | None = None):
+    def verify_album(self, album_id, expect: str) -> tuple[bool, str]:
+        """Check the unit still has `expect` (album name) at `album_id`."""
+        ip = self.device.ip
+        try:
+            raw = artwork.device_call(ip, f"albumDetails&id={int(album_id)}&time={int(time.time()*1000)}", 10)
+            name = json.loads(raw.decode("utf-8", "replace")).get("name", "")
+        except Exception:
+            return False, ""
+        norm = lambda x: re.sub(r"<[^>]*>", "", x or "").strip().lower()
+        return (not expect) or norm(name) == norm(expect), re.sub(r"<[^>]*>", "", name)
+
+    def art_set(self, album_id, url: str | None = None, data: bytes | None = None, expect: str = ""):
         ip = self.device.ip
         if not ip:
             return self.send_json(503, {"error": "device_unavailable"})
@@ -420,6 +510,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(400, {"error": "bad album id"})
         if not (1_000_000 <= album_id < 2_000_000):
             return self.send_json(400, {"error": "not an album id"})
+        ok, actual = self.verify_album(album_id, expect)
+        if not ok:
+            log(f"artwork NOT set: album {album_id} is now '{actual}', expected '{expect}'")
+            return self.send_json(409, {"error": "library_changed", "actual": actual,
+                                        "message": "The Brennan's library changed and that album moved. Refresh and try again."})
         if url and not re.match(r"^https?://", url):
             return self.send_json(400, {"error": "URL must start with http:// or https://"})
         if not url and not data:
@@ -427,6 +522,7 @@ class Handler(BaseHTTPRequestHandler):
         res = artwork.set_art(ip, album_id, url=url or None, data=data)
         if res.get("ok"):
             self.missing.mark_fixed(album_id, ip)
+            self.library.bump()
             log(f"artwork set for album {album_id} ({res.get('method')})")
         else:
             log(f"artwork for album {album_id} failed: {res.get('error')}")
@@ -458,12 +554,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(502, {"error": "device_unreachable", "detail": str(e)})
         self.device.report_ok()
         cmd = query.split("&", 1)[0]
+        if cmd in WRITE_CMDS:
+            self.library.bump()
         headers = {"Cache-Control": "no-store"}
         if cmd in ("getAlbumArt", "getCurrentArt", "getVideoThumbnail"):
             if not body:
                 return self.send_bytes(404, b"", "text/plain", headers)
             ctype = sniff_image(body) or ctype
-            if cmd == "getAlbumArt":
+            # IDs can be renumbered, so only cache art requested with the current
+            # library generation in the URL (&g=...). Anything else is always fresh.
+            if cmd == "getAlbumArt" and f"&g={self.library.gen}" in query:
                 headers["Cache-Control"] = "private, max-age=86400"
         elif ctype.startswith("text/") or ctype == "application/octet-stream":
             s = body.lstrip()[:1]
@@ -489,6 +589,7 @@ def main():
 
     dev = Device(args.subnet, args.ip)
     Handler.device = dev
+    Handler.library = Library(dev)
 
     def save_placeholders(placeholders, allowed):
         dev.cfg["placeholder_hashes"] = placeholders
