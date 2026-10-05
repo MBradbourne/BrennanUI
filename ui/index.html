@@ -390,9 +390,54 @@ async function api(cmd, params, tail){
   const t = await r.text();
   try { return JSON.parse(t); } catch { return t; }
 }
-const artBust = (()=>{ try { return JSON.parse(localStorage.getItem('brennan.artBust')||'{}'); } catch { return {}; } })();
-const artURL = id => '/api?getAlbumArt&id='+id+(artBust[id]?'&v='+artBust[id]:'');
-function bustArt(id){ artBust[id]=Date.now(); try{ localStorage.setItem('brennan.artBust', JSON.stringify(artBust)); }catch{} S.artVersion++; S.lastTrackId=null; }
+// The Brennan's IDs are positions in its index and can be renumbered when the library
+// changes (renames, moves, rips, artwork). Everything cached is tied to the launcher's
+// library "generation" (S.gen) and thrown away when it changes.
+try { localStorage.removeItem('brennan.artBust'); } catch {}
+const artURL = id => '/api?getAlbumArt&id='+id+'&g='+(S.gen||'0');
+// Ask the launcher to re-read the library now; applies the new generation if it changed.
+async function refreshLibrary(){
+  try { const j = await fetch('/local/library-refresh',{method:'POST'}).then(r=>r.json()); await onGeneration(j.gen); } catch {}
+}
+// Find an album's current ID by name (+artist). Returns null if not found.
+async function findAlbumId(name, artist){
+  const list = await api('search',{artists:'N',tracks:'N',radio:'N',video:'N',offset:0,count:20000},{string:''});
+  S.cache.albums = list;
+  const n=x=>clean(x).trim().toLowerCase();
+  const hit = list.find(a=>n(a.album)===n(name) && (!artist || n(a.artist)===n(artist))) || list.find(a=>n(a.album)===n(name));
+  return hit ? hit.id : null;
+}
+async function findArtistId(name){
+  const list = await api('search',{albums:'N',tracks:'N',radio:'N',video:'N',offset:0,count:20000},{string:''});
+  S.cache.artists = list;
+  const hit = list.find(a=>clean(a.artist).trim().toLowerCase()===clean(name).trim().toLowerCase());
+  return hit ? hit.id : null;
+}
+// Before changing an album/artist, make sure the ID still points at what's on screen.
+async function stillSame(id, expectName){
+  try {
+    const d = await api(kind(id)==='artist'?'artistDetails':'albumDetails',{id});
+    if (clean(d.name).trim().toLowerCase() === clean(expectName).trim().toLowerCase()) return true;
+  } catch {}
+  toast('The Brennan’s library changed — refreshing. Please try again.');
+  await refreshLibrary(); return false;
+}
+async function onGeneration(gen){
+  if (!gen || gen==='0' || gen===S.gen) { if (gen && gen!=='0') S.gen=gen; return; }
+  const first = !S.gen || S.gen==='0';
+  S.gen = gen;
+  S.cache = {artists:null, albums:null, playlists:null, presets:null};
+  S.artVersion++; S.lastTrackId=null;
+  if (first) return;
+  // Re-point the page we're on at the item's new ID, then redraw it.
+  const r = S.route;
+  try {
+    if (r.name==='album' && r.key){ const nid = await findAlbumId(r.key.name, r.key.artist); if (nid) r.id = nid; else return go('albums',{},false); }
+    if (r.name==='artist' && r.key){ const nid = await findArtistId(r.key.name); if (nid) r.id = nid; else return go('artists',{},false); }
+  } catch {}
+  try { history.replaceState(null,'','#'+r.name+(r.id?'/'+r.id:'')); } catch {}
+  if (!document.querySelector('.scrim')) render();
+}
 const sonosParam = () => ({sonos: S.output});
 
 /* =========================================================================
@@ -625,6 +670,7 @@ async function viewArtist({id}){
   let det, albums;
   try { [det, albums] = await Promise.all([api('artistDetails',{id}), api('listartist',{id})]); } catch { return offlineView(); }
   const name = clean(det.name);
+  if (S.route.name==='artist') S.route.key = {name};
   main.innerHTML = `<div class="view">
     <div class="toolbar">${backBtn()}</div>
     <div class="hero">
@@ -641,8 +687,10 @@ async function viewArtist({id}){
   $('#artMore').onclick = e => itemMenu(e.currentTarget, id, name, ['-',
     {text:'Rename artist…', run:async()=>{
       const n=await prompt2('Rename artist','Artist name','Rename',name); if(!n||n===name) return;
+      if (!await stillSame(id, name)) return;
       try { await api('renameID',{id},{name:n}); } catch { return toast('Rename failed'); }
-      invalidateLibrary(); toast('Renamed to '+n); viewArtist({id});
+      toast('Renamed to '+n); S.route.key={name:n}; await refreshLibrary();
+      const nid = await findArtistId(n).catch(()=>null); if (nid) { S.route.id=nid; viewArtist({id:nid}); } else go('artists',{},false);
     }}]);
   bindCards(); hydrateArt(main);
 }
@@ -692,6 +740,8 @@ async function viewAlbum({id}){
   try { [det, tracks, parent] = await Promise.all([api('albumDetails',{id}), api('listalbum',{id}), api('getParent',{id}).catch(()=>null)]); }
   catch { return offlineView(); }
   const title = clean(det.name), artist = clean(det.artist);
+  if (S.route.name==='album') S.route.key = {name: det.name, artist: det.artist};
+  const reopen = async (name, art) => { S.route.key={name, artist:art}; await refreshLibrary(); const nid = await findAlbumId(name, art).catch(()=>null); if (nid){ S.route.id=nid; viewAlbum({id:nid}); } else go('albums',{},false); };
   main.innerHTML = `<div class="view">
     <div class="toolbar">${backBtn()}</div>
     <div class="hero">
@@ -708,9 +758,9 @@ async function viewAlbum({id}){
   const img=main.querySelector('.hero .art img'); if(img){img.style.position='absolute';img.style.inset='0';img.style.zIndex=1;}
   $('#playAlbum').onclick=()=>play(id,title);
   $('#qAlbum').onclick=()=>queue(id,title);
-  $('#heroArt').onclick=()=>openArtFinder({id, album:title, artist}, null, ()=>viewAlbum({id}));
+  $('#heroArt').onclick=()=>openArtFinder({id, album:title, artist}, null, ()=>render());
   $('#albMore').onclick=e=>itemMenu(e.currentTarget,id,title,[ '-',
-    {text:'Find artwork…', run:()=>openArtFinder({id, album:title, artist}, null, ()=>viewAlbum({id}))},
+    {text:'Find artwork…', run:()=>openArtFinder({id, album:title, artist}, null, ()=>render())},
     {text:'Mark cover as placeholder', run:async()=>{
       try { const r = await localJSON('/local/art-placeholder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
         toast(r.albums_with_this_image>1 ? `Marked — ${r.albums_with_this_image} albums use this image` : 'Marked as placeholder'); }
@@ -718,11 +768,14 @@ async function viewAlbum({id}){
     {text:'Cover is fine (not a placeholder)', run:async()=>{
       try { await localJSON('/local/art-not-placeholder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); toast('Got it — this image won’t be flagged'); }
       catch(e){ toast(e.message); } }},
-    {text:'Rename album…', run:async()=>{ const n=await prompt2('Rename album','Album name','Rename',title); if(n&&n!==title){ await api('renameID',{id},{name:n}); invalidateLibrary(); viewAlbum({id}); } }},
+    {text:'Rename album…', run:async()=>{ const n=await prompt2('Rename album','Album name','Rename',title); if(!n||n===title) return;
+      if (!await stillSame(id, det.name)) return;
+      await api('renameID',{id},{name:n}); toast('Renamed to '+n); reopen(n, det.artist); }},
     {text:'Change album artist…', run:async()=>{
       const n=await prompt2('Move album to artist','Artist name (an existing name merges into that artist)','Move',artist); if(!n||n===artist) return;
+      if (!await stillSame(id, det.name)) return;
       try { await api('moveID',{id},{name:n}); } catch { return toast('Move failed'); }
-      invalidateLibrary(); toast('Moved to '+n); viewAlbum({id});
+      toast('Moved to '+n); reopen(det.name, n);
     }} ]);
   if ($('#toArtist')) $('#toArtist').onclick=e=>{e.preventDefault(); go('artist',{id:parent.id});};
   main.querySelectorAll('#tl tr').forEach(tr=>{
@@ -732,12 +785,15 @@ async function viewAlbum({id}){
     tr.querySelector('[data-q]').onclick=()=>queue(tid,name);
     tr.querySelector('[data-m]').onclick=e=>itemMenu(e.currentTarget,tid,name,['-',{text:'Rename track…', run:async()=>{
       const old=tracks[tr.dataset.i].name; const n=await prompt2('Rename track','Track name','Rename',old); if(!n||n===old) return;
-      await api('renameID',{id:tid},{name:n}); viewAlbum({id});
+      if (!await stillSame(id, det.name)) return;
+      const now = await api('listalbum',{id}).catch(()=>[]);
+      if (!now.some(t=>t.id===tid && t.name===old)) { toast('The Brennan’s library changed — refreshing. Please try again.'); return refreshLibrary(); }
+      await api('renameID',{id:tid},{name:n}); toast('Renamed'); reopen(det.name, det.artist);
     }}]);
   });
   markNowPlaying();
 }
-function invalidateLibrary(){ S.cache.artists=null; S.cache.albums=null; }
+function invalidateLibrary(){ S.cache.artists=null; S.cache.albums=null; }  // kept for older call sites
 function markNowPlaying(){
   const tid = S.status?.trackid;
   main.querySelectorAll('#tl tr, .tracks tr[data-id]').forEach(tr=>tr.classList.toggle('now', tid && tr.dataset.id==tid));
@@ -888,31 +944,40 @@ function openArtFinder(item, flow, onDone){
       <label class="pill" style="cursor:pointer">Choose file…<input type="file" id="afFile" accept="image/jpeg,image/png" hidden></label>
     </div></div>`;
   document.body.append(sc);
-  const close=()=>{ sc.remove(); };
+  const close=()=>{ sc.remove(); S.artFlowActive=false; };
   sc.onclick=e=>{ if(e.target===sc) close(); };
   $('#afClose').onclick=close;
-  const next = () => {
+  const next = async () => {
     if (!flow) { close(); onDone&&onDone(); return; }
     const n = flow.index+1;
-    if (n >= flow.list.length) { close(); toast('That was the last one'); onDone&&onDone(); return; }
-    openArtFinder(flow.list[n], {...flow, index:n}, onDone);
+    if (n >= flow.list.length) { S.artFlowActive=false; close(); toast('That was the last one'); onDone&&onDone(); return; }
+    let it = flow.list[n];
+    if (flow.gen !== S.gen) {               // library renumbered since the list was made
+      const nid = await findAlbumId(it.album, it.artist).catch(()=>null);
+      if (nid) it = {...it, id:nid};
+    }
+    openArtFinder(it, {...flow, index:n, gen:S.gen}, onDone);
   };
+  if (flow) { S.artFlowActive = true; if (!flow.gen) flow.gen = S.gen; }
   if ($('#afSkip')) $('#afSkip').onclick=next;
 
-  const applied = (res) => {
-    bustArt(item.id);
+  const applied = async (res) => {
+    await refreshLibrary();
     if (flow) flow.fixed = (flow.fixed||0)+1;
     const px = res.size ? ` (${res.size[0]}×${res.size[1]})` : '';
     toast('Artwork updated'+px);
     document.querySelectorAll(`.card[data-id="${item.id}"] img, .card[data-id="${item.id}"] .art img`).forEach(im=>{ im.src=artURL(item.id); });
     setTimeout(next, 450);
   };
-  const fail = (e) => toast(e.message || 'Couldn’t set artwork');
+  const fail = (e) => {
+    if (e.body?.error==='library_changed') { toast(e.body.message); close(); refreshLibrary(); return; }
+    toast(e.message || 'Couldn’t set artwork');
+  };
 
   async function useUrl(url, tile){
     if (tile) tile.querySelector('.im').insertAdjacentHTML('beforeend','<div class="busy"><div class="spinner"></div></div>');
     sc.querySelectorAll('.af-tile').forEach(t=>t.disabled=true);
-    try { applied(await localJSON('/local/art-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:item.id,url})})); }
+    try { applied(await localJSON('/local/art-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:item.id,url,expect:item.album})})); }
     catch(e){ fail(e); tile?.querySelector('.busy')?.remove(); sc.querySelectorAll('.af-tile').forEach(t=>t.disabled=false); }
   }
   $('#afUseUrl').onclick=()=>{ const u=$('#afUrl').value.trim(); if(u) useUrl(u); };
@@ -920,7 +985,7 @@ function openArtFinder(item, flow, onDone){
     const f=e.target.files[0]; if(!f) return;
     if (f.size>25e6) return toast('That file is too big');
     toast('Sending '+f.name+'…');
-    try { applied(await localJSON('/local/art-upload?id='+item.id,{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:f})); } catch(err){ fail(err); }
+    try { applied(await localJSON('/local/art-upload?id='+item.id+'&expect='+encodeURIComponent(item.album),{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:f})); } catch(err){ fail(err); }
   };
 
   async function runSearch(){
@@ -947,7 +1012,8 @@ async function viewMissingArt(){
   clearTimeout(missingTimer);
   let st;
   try { st = await localJSON('/local/art-scan'); } catch { return offlineView(); }
-  if (st.state==='idle' || st.state==='error'){ try { st = await localJSON('/local/art-scan',{method:'POST'}); } catch { return offlineView(); } }
+  const stale = st.state==='done' && st.scan_gen && st.gen && st.scan_gen!==st.gen && !S.artFlowActive;
+  if (st.state==='idle' || st.state==='error' || stale){ try { st = await localJSON('/local/art-scan',{method:'POST'}); } catch { return offlineView(); } }
   if (S.route.name!=='missingart') return;
   if (st.state==='running'){
     const pct = st.total ? Math.round(st.done*100/st.total) : 0;
@@ -1227,7 +1293,8 @@ async function pollDevice(){
   else if (j.state==='offline'){ T.textContent='Launcher not running'; sub.textContent='start brennan.py'; }
   else { T.textContent='Starting…'; sub.textContent=''; }
   if (j.state==='found' && (!wasFound || prevIp!==j.device.ip)) { if (prevIp && prevIp!==j.device.ip) S.cache={artists:null,albums:null,playlists:null,presets:null}; poll(); if (!main.innerHTML || /Can’t reach/.test(main.textContent)) render(); }
-  devTimer=setTimeout(pollDevice, j.state==='found'?10000:1000);
+  if (j.state==='found' && j.gen) onGeneration(j.gen);
+  devTimer=setTimeout(pollDevice, j.state==='found'?5000:1000);
 }
 async function rescan(){ await fetch('/local/rescan',{method:'POST'}).catch(()=>{}); toast('Scanning the network…'); pollDevice(); }
 $('#rescanBtn').onclick=rescan;
