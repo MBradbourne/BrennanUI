@@ -17,6 +17,7 @@ it through the same HTTP interface the unit's built-in web page uses.
 - **Settings**: shuffle, sort order, segue, bass/treble, EQ, rip format
 - **Remembers where you were**: each sidebar section returns to the page, playlist and scroll
   position you left it on
+- **Light and dark themes**: Settings → Appearance (Dark, Light or Match system)
 
 > Not affiliated with or endorsed by Brennan. The unit's HTTP interface is undocumented,
 > so a future firmware update could change it. Built and tested against firmware
