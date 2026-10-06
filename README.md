@@ -18,6 +18,8 @@ it through the same HTTP interface the unit's built-in web page uses.
 - **Remembers where you were**: each sidebar section returns to the page, playlist and scroll
   position you left it on
 - **Light and dark themes**: Settings → Appearance (Dark, Light or Match system)
+- **Rip CDs**: the CD page appears when a disc is in — pick the right match, fix names, choose a
+  cover, rip, and watch progress
 
 > Not affiliated with or endorsed by Brennan. The unit's HTTP interface is undocumented,
 > so a future firmware update could change it. Built and tested against firmware
@@ -103,6 +105,20 @@ something is queued. How it behaves (observed on firmware "B3 Aug 28 2025"):
 
 Add to Queue tells you what happened ("is playing now" or "added — 3 tracks up next"), and
 **Up next** on Now Playing lists what's coming.
+
+## Ripping CDs
+
+Put a disc in the Brennan and a **CD inserted — Rip it** prompt appears (the CD item in the
+sidebar also gets a dot). The CD page shows:
+
+- the matches from the Brennan's own lookup **plus** MusicBrainz matches for the disc ID, so
+  you can pick the right edition;
+- editable artist, album and track names;
+- **Find cover…**, which searches Apple Music, Deezer and MusicBrainz like the artwork finder;
+- **Rip CD**, **Look up again** and **Eject**, with live progress while it rips.
+
+Ripping uses the same command as the Brennan's own page (`newRip`, with the chosen match's
+details). The format (FLAC/MP3) is set in Settings → Ripping.
 
 ## Sonos
 
