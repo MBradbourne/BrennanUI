@@ -1,0 +1,42 @@
+# Brennan B3+ UI — server edition
+#
+#   docker compose up -d --build
+#   then open http://<this-server's-IP>:8765 from any phone, tablet or computer on your network
+#
+services:
+  brennan-ui:
+    build: .
+    container_name: brennan-ui
+    restart: unless-stopped
+
+    # Host networking (Linux) is the simplest and fully featured option: the container can
+    # scan your LAN to find the Brennan, and the Brennan can reach back to it for artwork.
+    network_mode: host
+
+    environment:
+      BRENNAN_PORT: "8765"            # pick a free port if you already run other web servers
+      # BRENNAN_IP: "192.168.1.50"    # skip scanning and use this address
+      # BRENNAN_SUBNET: "192.168.1.0/24"  # scan this range instead of auto-detecting
+      # BRENNAN_PASSWORD: "change-me" # ask for a password in the browser (recommended)
+      TZ: "America/New_York"
+
+    volumes:
+      - brennan-data:/data            # remembers the Brennan's address and artwork settings
+
+volumes:
+  brennan-data:
+
+# ---------------------------------------------------------------------------------------
+# Can't use host networking? (e.g. Docker Desktop on a Mac without host networking enabled)
+# Replace `network_mode: host` with the block below. The automatic scan can't see your LAN
+# from Docker's private network, so set BRENNAN_SUBNET (or BRENNAN_IP). For artwork that the
+# Brennan can't download itself, the container serves the image on a second published port
+# and tells the Brennan to fetch it from this server's LAN address (BRENNAN_RELAY_HOST).
+#
+#    ports:
+#      - "8765:8765"
+#      - "8766:8766"
+#    environment:
+#      BRENNAN_SUBNET: "192.168.1.0/24"
+#      BRENNAN_RELAY_HOST: "192.168.1.20"   # this server's LAN IP
+#      BRENNAN_RELAY_PORT: "8766"
