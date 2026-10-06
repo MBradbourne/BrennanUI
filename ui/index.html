@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Brennan">
+<link rel="apple-touch-icon" href="icon-180.png">
 <title>Brennan</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23111'/%3E%3Ccircle cx='16' cy='16' r='10' fill='none' stroke='%23f0a43a' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23f0a43a'/%3E%3C/svg%3E">
 <script>
@@ -58,6 +63,11 @@ svg.i.fill{fill:currentColor;stroke:none}
 aside{grid-row:1;grid-column:1;background:var(--bg-2);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
 main{grid-row:1;grid-column:2;overflow:auto;position:relative;min-height:0;scroll-behavior:smooth}
 .player{grid-row:2;grid-column:1/3}
+body.on-now .app{grid-template-rows:1fr 0}
+body.on-now .player{display:none}
+body.on-now .side-np{display:none!important}
+.vol-pop{padding:14px 16px;min-width:0;width:220px}
+.vol-pop input{width:100%}
 
 /* ---------- sidebar ---------- */
 .brand{display:flex;align-items:center;gap:10px;padding:20px 20px 14px}
@@ -164,12 +174,14 @@ h2{font:650 18px/1.2 var(--display);margin:28px 0 12px}
 .hero .meta a:hover{color:var(--accent)}
 
 /* now playing */
-.np{position:relative;min-height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.np{position:relative;min-height:100%;overflow:hidden}
 .np-bg{position:absolute;inset:-60px;background-size:cover;background-position:center;filter:var(--np-filter);transform:scale(1.1);opacity:0;transition:opacity .8s, background-image .8s}
 .np-bg.ok{opacity:1}
 .np-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,var(--np-fade-top),var(--np-fade-bot))}
-.np-inner{position:relative;display:flex;gap:56px;align-items:center;padding:48px;max-width:1200px;width:100%}
-.np-art{width:min(44vh,440px);aspect-ratio:1;border-radius:18px;overflow:hidden;background:var(--panel);box-shadow:0 30px 80px rgba(0,0,0,.6);flex:none;position:relative}
+.np-inner{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);gap:clamp(16px,3vw,40px);align-items:center;padding:clamp(16px,3vw,40px);max-width:1180px;margin:0 auto}
+/* the cover scales with the window (both width and height) and never dominates the page */
+.np-art{width:min(clamp(110px,22vw,300px),36vh)}
+.np-art{aspect-ratio:1;border-radius:18px;overflow:hidden;background:var(--panel);box-shadow:0 30px 80px rgba(0,0,0,.6);flex:none;position:relative}
 .np-art img{width:100%;height:100%;object-fit:cover;display:block}
 .np-info{flex:1;min-width:0}
 .np-source{display:inline-flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-2);font-weight:600;margin-bottom:14px}
@@ -179,22 +191,24 @@ h2{font:650 18px/1.2 var(--display);margin:28px 0 12px}
 .np-source .eq i:nth-child(2){animation-delay:-.3s!important}
 .np-source .eq i:nth-child(3){animation-delay:-.6s!important}
 @keyframes eq{0%,100%{height:25%}50%{height:100%}}
-.np-title{font:750 clamp(28px,4vw,52px)/1.05 var(--display);letter-spacing:-.02em;margin:0 0 14px;word-break:break-word}
-.np-line{font-size:19px;color:var(--text-2);margin:4px 0}
+.np-title{font:750 clamp(20px,2.6vw,40px)/1.08 var(--display);letter-spacing:-.02em;margin:0 0 8px;word-break:break-word}
+.np-line{font-size:clamp(14px,1.3vw,18px);color:var(--text-2);margin:2px 0}
 .np-line a{color:var(--text)}
 .np-line a:hover{color:var(--accent)}
-.np-seek{margin-top:34px;max-width:620px}
+.np-seek{margin-top:clamp(12px,2vh,24px);max-width:680px}
 .np-times{display:flex;justify-content:space-between;font:12px var(--mono);color:var(--text-3);margin-top:8px}
-.np-controls{display:flex;align-items:center;gap:18px;margin-top:22px}
-.big-play{width:68px;height:68px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;box-shadow:0 10px 30px rgba(0,0,0,.4);transition:transform .12s}
+.np-controls{display:flex;align-items:center;gap:clamp(6px,1.2vw,16px);margin-top:clamp(8px,1.6vh,18px);flex-wrap:wrap;max-width:680px}
+.np-controls .grow{flex:1}
+.np-controls .vol{width:clamp(110px,14vw,180px)}
+.big-play{width:clamp(48px,4.4vw,60px);height:clamp(48px,4.4vw,60px);border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;box-shadow:0 10px 30px rgba(0,0,0,.4);transition:transform .12s}
 .big-play:hover{transform:scale(1.05)}
 .big-play svg{width:28px;height:28px}
-.np-controls .iconbtn{width:46px;height:46px}
-.np-controls .iconbtn svg{width:24px;height:24px}
-.np-vu{display:flex;gap:3px;height:34px;align-items:flex-end;margin-top:30px;opacity:.9}
+.np-controls .iconbtn{width:40px;height:40px}
+.np-controls .iconbtn svg{width:22px;height:22px}
+.np-vu{display:flex;gap:3px;height:22px;align-items:flex-end;margin-top:14px;opacity:.9}
 .np-vu i{width:6px;border-radius:2px;background:linear-gradient(0deg,var(--accent),var(--vu-top));height:4%;transition:height .25s ease}
 .np-extra{margin-top:20px;color:var(--text-3);font-size:13px}
-.np-upnext{margin-top:26px;max-width:620px;background:var(--glass);border:1px solid var(--line);border-radius:var(--radius);padding:14px 10px 8px;backdrop-filter:blur(8px)}
+.np-upnext{grid-column:1/-1;margin-top:0;background:var(--glass);border:1px solid var(--line);border-radius:var(--radius);padding:14px 10px 8px;backdrop-filter:blur(8px)}
 .np-upnext:empty{display:none}
 .np-upnext .head{display:flex;align-items:center;justify-content:space-between;padding:0 8px 8px}
 .np-upnext .head b{font:650 12px var(--font);letter-spacing:.1em;text-transform:uppercase;color:var(--text-2)}
@@ -337,18 +351,91 @@ input[type=range][disabled]{opacity:.35;cursor:default}
 /* search results */
 .results-section{margin-bottom:8px}
 
+/* ---------- narrower desktops ---------- */
+@media (max-width:1100px){
+  .player{grid-template-columns:minmax(180px,1fr) minmax(300px,1.3fr) auto}
+  .player .vol input{display:none}
+  .player .vol{width:auto}
+  .out-btn{max-width:150px}
+  .np-vu{display:none}
+}
+@media (max-height:620px){
+  .np-art{width:min(clamp(100px,18vw,220px),30vh)}
+  .np-vu,.np-extra{display:none}
+}
+/* ---------- tablets ---------- */
 @media (max-width:900px){
-  :root{--sidebar:72px}
-  .brand b,.brand small,nav button span,.search,.device .grow,.side-np{display:none}
+  :root{--sidebar:72px; --topbar:58px}
+  .brand b,.brand small,nav button span,.device .grow,.side-np{display:none}
   nav button{justify-content:center}
-  .np-inner{flex-direction:column;gap:28px;text-align:center}
+  /* search moves to a bar across the top of the content */
+  .search{position:fixed;top:0;left:var(--sidebar);right:0;margin:0;padding:10px 16px;z-index:20;background:var(--bg);border-bottom:1px solid var(--line)}
+  .search svg{left:28px}
+  main{padding-top:var(--topbar)}
+  .np{min-height:calc(100% - 0px)}
   .np-seek{margin-inline:auto}
-  .np-controls{justify-content:center}
-  .player{grid-template-columns:1fr auto;}
+  .player{grid-template-columns:1fr auto auto;gap:12px;padding:0 14px}
   .pl-right .vol{display:none}
   .split{grid-template-columns:1fr}
+  .plist{position:static}
   .view{padding:20px}
   .hero{flex-direction:column;align-items:flex-start}
+}
+/* ---------- phones ---------- */
+@media (max-width:700px){
+  :root{--player:68px; --tabbar:60px}
+  .app{grid-template-columns:1fr;grid-template-rows:1fr var(--player) var(--tabbar);height:100dvh}
+  body.on-now .app{grid-template-rows:1fr 0 var(--tabbar)}
+  .np-inner{grid-template-columns:1fr;justify-items:center;text-align:center}
+  .np-controls{justify-content:center}
+  .np-controls .grow{display:none}
+  .np-controls .vol{width:100%;max-width:320px;order:10}
+  main{grid-column:1;grid-row:1}
+  .player{grid-column:1;grid-row:2;grid-template-columns:1fr auto auto;padding:0 10px;gap:8px}
+  aside{grid-column:1;grid-row:3;flex-direction:row;border-right:0;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  .brand,.device{display:none}
+  nav{flex-direction:row;justify-content:space-around;width:100%;padding:6px 4px}
+  nav button{flex:1;padding:10px 0}
+  .search{left:0}
+  .search svg{left:28px}
+  /* compact player: art + title, play/next, output */
+  .pl-art{width:46px;height:46px}
+  .pl-center{flex-direction:row}
+  .pl-seek,#shuffleBtn,#prevBtn,#sortBtn{display:none}
+  .pl-buttons{gap:6px}
+  .out-btn{padding:8px;border-radius:50%}
+  .out-btn span{display:none}
+  /* now playing */
+  .np-inner{padding:16px 16px 24px;gap:16px}
+  .np-art{width:min(56vw,30vh)}
+  .np-title{font-size:26px;margin-bottom:8px}
+  .np-line{font-size:16px}
+  .np-seek{margin-top:20px;width:100%}
+  .np-controls{gap:10px;margin-top:14px}
+  .np-vu{display:none}
+  /* lists and grids */
+  .view{padding:16px 16px 28px}
+  h1{font-size:26px}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 12px}
+  .artist-grid{grid-template-columns:1fr}
+  .letters button{width:26px;height:30px}
+  .hero{gap:16px}
+  .hero .art{width:160px;height:160px}
+  .hero h1{font-size:28px}
+  .tracks td.dim{display:none}
+  .toolbar .filter{min-width:0;flex:1 1 100%}
+  .settings{grid-template-columns:1fr}
+  .set{flex-wrap:wrap}
+  .toast{bottom:calc(var(--player) + var(--tabbar) + 14px);max-width:92vw;text-align:center}
+  .modal.wide{max-height:86dvh}
+  .af-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* touch screens have no hover: keep row buttons and card play buttons visible */
+@media (hover:none){
+  .tracks tr .rowbtn,.np-upnext li .rowbtn{opacity:1}
+  .tracks .num-txt{display:none!important}
+  .tracks .num-play{display:inline-grid!important}
+  .card .play{opacity:1;transform:none;width:36px;height:36px}
 }
 </style>
 </head>
@@ -395,10 +482,10 @@ input[type=range][disabled]{opacity:.35;cursor:default}
       <div class="pl-seek"><span id="tIn">0:00</span><input type="range" id="seek" min="0" max="1000" value="0" aria-label="Seek"><span id="tLen">0:00</span></div>
     </div>
     <div class="pl-right">
-      <button class="out-btn" id="outBtn" title="Choose output"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><rect x="6" y="3" width="12" height="18" rx="2"/><circle cx="12" cy="14" r="3"/><circle cx="12" cy="7" r=".6"/></svg><span id="outName">Brennan speakers</span></button>
+      <button class="out-btn" id="outBtn" data-out title="Choose output"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><rect x="6" y="3" width="12" height="18" rx="2"/><circle cx="12" cy="14" r="3"/><circle cx="12" cy="7" r=".6"/></svg><span id="outName" class="out-name">Brennan speakers</span></button>
       <div class="vol">
-        <button class="iconbtn" id="muteBtn" title="Mute"><svg class="i" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path id="volWaves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg></button>
-        <input type="range" id="vol" min="0" max="64" value="0" aria-label="Volume">
+        <button class="iconbtn mute-btn" id="muteBtn" title="Mute (or volume)"><svg class="i" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="vol-waves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg></button>
+        <input type="range" class="vol-range" id="vol" min="0" max="64" value="0" aria-label="Volume">
       </div>
     </div>
   </footer>
@@ -640,7 +727,7 @@ async function refreshUpNext(force){
   if (sig === upNextSig) return; upNextSig = sig;
   if (!items.length) { el.innerHTML=''; return; }
   const fromQueue = S.status?.playlist === 'Queue';
-  const shown = items.slice(0,6);
+  const shown = items.slice(0, innerHeight>800 ? 10 : 6);
   el.innerHTML = `<div class="head"><b>${fromQueue?'Up next':'In your Queue'}</b><a href="#" id="unAll">See all</a></div>
     <ol>${shown.map((t,i)=>`<li data-i="${i}"><span class="n">${i+1}</span><span class="t">${esc(cleanTrack(clean(t.name)))}</span>
       <button class="rowbtn" data-p title="Play now">${icon.play}</button><button class="rowbtn" data-x title="Remove from Queue">${icon.trash}</button></li>`).join('')}</ol>
@@ -707,6 +794,7 @@ function go(name, args={}, push=true){
   if (sec && sec !== S.section) { S.sectionHistory[S.section] = S.history; S.history = []; S.section = sec; }
   else if (push && S.route) S.history.push(S.route);
   S.route = {name, ...args};
+  document.body.classList.toggle('on-now', name==='now');
   if (S.section) S.sectionRoute[S.section] = S.route;
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.go===S.section));
   main.scrollTop = 0;
@@ -761,12 +849,16 @@ function viewNow(){
           <button class="big-play" id="npPlay" title="Play / Pause"></button>
           <button class="iconbtn" data-cmd="next" title="Next"><svg class="i fill" viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
           <button class="iconbtn" id="npMore" title="More">${icon.more}</button>
+          <span class="grow"></span>
+          <button class="out-btn" data-out title="Choose output"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><rect x="6" y="3" width="12" height="18" rx="2"/><circle cx="12" cy="14" r="3"/><circle cx="12" cy="7" r=".6"/></svg><span class="out-name">${esc(outputName())}</span></button>
+          <div class="vol"><button class="iconbtn mute-btn" title="Mute"><svg class="i" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="vol-waves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg></button><input type="range" class="vol-range" min="0" max="64" value="0" aria-label="Volume"></div>
         </div>
         <div class="np-vu" id="npVu">${'<i></i>'.repeat(10)}</div>
         <div class="np-extra" id="npExtra"></div>
-        <div class="np-upnext" id="npUpNext"></div>
       </div>
+      <div class="np-upnext" id="npUpNext"></div>
     </div></div>`;
+  bindVolume(main); bindOutputButtons(main);
   $('#npPlay').onclick = togglePlay;
   $('#npShuffle').onclick = toggleShuffle;
   main.querySelectorAll('[data-cmd]').forEach(b=>b.onclick=()=>transport(b.dataset.cmd));
@@ -1293,18 +1385,53 @@ function bindSeek(el){
 }
 bindSeek($('#seek'));
 
-const vol=$('#vol'); let volTimer;
-vol.addEventListener('input',()=>{ S.volDrag=true; setRangeFill(vol); clearTimeout(volTimer); volTimer=setTimeout(()=>api('vol'+vol.value, sonosParam()).catch(()=>{}),60); });
-vol.addEventListener('change',()=>{ api('vol'+vol.value, sonosParam()).catch(()=>{}); setTimeout(()=>S.volDrag=false,1500); });
-$('#muteBtn').onclick=()=>{ if (+vol.value>0){ S.muteFrom=vol.value; vol.value=0; } else { vol.value=S.muteFrom||20; S.muteFrom=null; } setRangeFill(vol); api('vol'+vol.value, sonosParam()); S.volDrag=true; setTimeout(()=>S.volDrag=false,1500); };
-
-$('#outBtn').onclick=e=>{
-  const st=S.status||{}; const names=st.sonos||[], active=st.sonosActive||[];
+// Volume controls: the player bar and Now Playing each have one; they stay in sync.
+let volTimer;
+const volRanges = () => [...document.querySelectorAll('.vol-range')];
+function sendVolume(v, final){
+  S.volDrag = true;
+  volRanges().forEach(r=>{ r.value=v; setRangeFill(r); });
+  clearTimeout(volTimer);
+  volTimer = setTimeout(()=>api('vol'+v, sonosParam()).catch(()=>{}), final?0:60);
+  if (final) setTimeout(()=>S.volDrag=false,1500);
+}
+function openVolumePopover(anchor){
+  closeMenus();
+  const m=document.createElement('div'); m.className='menu vol-pop';
+  m.innerHTML = `<div class="lbl" style="padding:0 0 8px">Volume · ${esc(outputName())}</div><input type="range" class="vol-range" min="0" max="64" value="${volRanges()[0]?.value||0}" aria-label="Volume">`;
+  document.body.append(m);
+  const r=anchor.getBoundingClientRect();
+  m.style.left = Math.max(8, Math.min(r.right-m.offsetWidth, innerWidth-m.offsetWidth-8))+'px';
+  m.style.top = (r.top - m.offsetHeight - 8 > 8 ? r.top - m.offsetHeight - 8 : r.bottom + 8)+'px';
+  menuJustOpened=true; setTimeout(()=>menuJustOpened=false);
+  bindVolume(m); setRangeFill(m.querySelector('input')); m.querySelector('input').focus();
+}
+function bindVolume(root){
+  root.querySelectorAll('.vol-range').forEach(r=>{
+    if (r.dataset.bound) return; r.dataset.bound=1;
+    r.addEventListener('input',()=>sendVolume(r.value,false));
+    r.addEventListener('change',()=>sendVolume(r.value,true));
+  });
+  root.querySelectorAll('.mute-btn').forEach(b=>{
+    if (b.dataset.bound) return; b.dataset.bound=1;
+    b.onclick=e=>{
+      const own = b.parentElement.querySelector('.vol-range');
+      // when the window is too narrow to show the slider, the speaker button opens one
+      if (!own || own.offsetParent===null) return openVolumePopover(b);
+      const cur=+own.value;
+      if (cur>0){ S.muteFrom=cur; sendVolume(0,true); } else { sendVolume(S.muteFrom||20,true); S.muteFrom=null; }
+    };
+  });
+}
+function openOutputMenu(anchor){
+  const st=S.status||{}; const names=st.sonos||[];
   const items=[{label:'Play on'},{text:'Brennan speakers', on:S.output===0, run:()=>setOutput('')}];
   sonosChoices(st).forEach(c=>items.push({text:c.label, on:S.output===c.index, run:()=>setOutput(c.key)}));
   if (names.length) items.push('-',{text:'Rescan Sonos', run:()=>{api('scanSonos'); toast('Looking for Sonos speakers…');}});
-  openMenu(e.currentTarget, items);
-};
+  openMenu(anchor, items);
+}
+function bindOutputButtons(root){ root.querySelectorAll('[data-out]').forEach(b=>{ if(!b.dataset.bound){ b.dataset.bound=1; b.onclick=e=>openOutputMenu(e.currentTarget); } }); }
+bindVolume(document); bindOutputButtons(document);
 function setOutput(name){ S.outputName=name||''; try{localStorage.setItem('brennan.outputName',S.outputName)}catch{}; resolveOutput(S.status); S.sonosStatus=null; S.volDrag=false; updateUI(); toast('Output: '+outputName()); poll(); refreshUpNext(true); }
 function outputName(){ return S.output>0 ? (S.outputLabel || S.outputName.replace(/#\d+$/,'') || 'Sonos') : 'Brennan speakers'; }
 
@@ -1437,14 +1564,13 @@ function updateUI(){
   if (!S.seeking){ $('#tIn').textContent=fmt(into); }
   $('#tLen').textContent=fmt(dur);
 
-  // volume
-  if (!S.volDrag){
-    let v = S.output>0 ? Math.min(64, +S.sonosStatus?.volume||0) : +st.volume||0;
-    vol.value=v; setRangeFill(vol);
-  }
-  $('#volWaves').style.opacity = +vol.value? 1 : .15;
-  $('#outName').textContent=outputName();
-  $('#outBtn').classList.toggle('sonos', S.output>0);
+  // volume + output (player bar and Now Playing)
+  const vNow = S.output>0 ? Math.min(64, +S.sonosStatus?.volume||0) : +st.volume||0;
+  if (!S.volDrag) volRanges().forEach(r=>{ r.value=vNow; setRangeFill(r); });
+  const vShown = +(volRanges()[0]?.value||0);
+  document.querySelectorAll('.vol-waves').forEach(w=>w.style.opacity = vShown? 1 : .15);
+  document.querySelectorAll('.out-name').forEach(n=>n.textContent=outputName());
+  document.querySelectorAll('[data-out]').forEach(b=>b.classList.toggle('sonos', S.output>0));
 
   // now playing view
   if (S.route.name==='now' && $('#np')){
@@ -1462,6 +1588,7 @@ function updateUI(){
     if (!src){ const bg=$('#npBg'); bg && bg.classList.remove('ok'); }
     const vu=st.vu||[]; const bars=$('#npVu').children;
     for (let i=0;i<bars.length;i++){ const v=+vu[i]||0; bars[i].style.height = Math.max(4, Math.min(100, v)) + '%'; }
+    $('#npVu').style.visibility = vu.some(v=>+v>0) ? 'visible' : 'hidden';      // no flat line when silent
     $('#npVu').style.display = S.output>0 ? 'none':'flex';
     const extra=[]; if (st.recording) extra.push('● Recording'); if (st.cdloaded) extra.push('CD: '+st.cdstatus); if (st.alert) extra.push(st.alert);
     $('#npExtra').textContent = extra.join('  ·  ');
