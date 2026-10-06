@@ -205,8 +205,11 @@ h2{font:650 18px/1.2 var(--display);margin:28px 0 12px}
 .big-play svg{width:28px;height:28px}
 .np-controls .iconbtn{width:40px;height:40px}
 .np-controls .iconbtn svg{width:22px;height:22px}
-.np-vu{display:flex;gap:3px;height:22px;align-items:flex-end;margin-top:14px;opacity:.9}
-.np-vu i{width:6px;border-radius:2px;background:linear-gradient(0deg,var(--accent),var(--vu-top));height:4%;transition:height .25s ease}
+.np-vu{display:block;width:min(280px,100%);height:52px;margin-top:clamp(10px,1.6vh,16px);transition:opacity .4s}
+.np-vu.quiet{opacity:0}.np-vu.off{display:none}
+.np-vu svg{display:block;width:100%;height:100%;overflow:hidden}
+.np-vu .vu-top{stop-color:var(--vu-top);stop-opacity:.95}.np-vu .vu-bot{stop-color:var(--accent);stop-opacity:.12}
+.np-vu .vu-line{fill:none;stroke:var(--vu-top);stroke-width:1.5;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 .np-extra{margin-top:20px;color:var(--text-3);font-size:13px}
 .np-upnext{grid-column:1/-1;margin-top:0;background:var(--glass);border:1px solid var(--line);border-radius:var(--radius);padding:14px 10px 8px;backdrop-filter:blur(8px)}
 .np-upnext:empty{display:none}
@@ -385,7 +388,6 @@ nav button{position:relative}
   .player .vol input{display:none}
   .player .vol{width:auto}
   .out-btn{max-width:150px}
-  .np-vu{display:none}
 }
 @media (max-height:620px){
   .np-art{width:min(clamp(100px,18vw,220px),30vh)}
@@ -440,7 +442,6 @@ nav button{position:relative}
   .np-line{font-size:16px}
   .np-seek{margin-top:20px;width:100%}
   .np-controls{gap:10px;margin-top:14px}
-  .np-vu{display:none}
   /* lists and grids */
   .view{padding:16px 16px 28px}
   h1{font-size:26px}
@@ -884,7 +885,11 @@ function viewNow(){
           <button class="out-btn" data-out title="Choose output"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><rect x="6" y="3" width="12" height="18" rx="2"/><circle cx="12" cy="14" r="3"/><circle cx="12" cy="7" r=".6"/></svg><span class="out-name">${esc(outputName())}</span></button>
           <div class="vol"><button class="iconbtn mute-btn" title="Mute"><svg class="i" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="vol-waves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg></button><input type="range" class="vol-range" min="0" max="64" value="0" aria-label="Volume"></div>
         </div>
-        <div class="np-vu" id="npVu">${'<i></i>'.repeat(10)}</div>
+        <div class="np-vu quiet" id="npVu" aria-hidden="true"><svg viewBox="0 0 280 52" preserveAspectRatio="none">
+          <defs><linearGradient id="vuFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="vu-top"/><stop offset="1" class="vu-bot"/></linearGradient>
+          <linearGradient id="vuFadeG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".15" stop-color="#fff"/><stop offset=".92" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+          <mask id="vuFade"><rect width="280" height="52" fill="url(#vuFadeG)"/></mask></defs>
+          <g mask="url(#vuFade)"><path class="vu-area" fill="url(#vuFill)"/><path class="vu-line"/></g></svg></div>
         <div class="np-extra" id="npExtra"></div>
       </div>
       <div class="np-upnext" id="npUpNext"></div>
@@ -1523,6 +1528,56 @@ async function applyPendingCdArt(){
   } catch { toast('Couldn’t add the cover — use Find artwork on the album'); }
 }
 
+/* ---- Level meter ----
+   status.vu is NOT ten frequency bands: it's the last ten level readings (newest first, about
+   one every 100 ms). We only poll once a second, so we queue the new readings and play them
+   back at their real pace as a smoothly scrolling area chart (newest on the right). It runs
+   ~1 s behind the music, which you can't see. */
+const VU_N = 18, VU_W = 280, VU_H = 52;              // 18 points ≈ the last 1.6 s
+const VU = { buf:[], hist:Array(VU_N).fill(0), phase:0, last:0, t:0, raf:0, playing:false };
+function vuFeed(vu, playing){
+  const now=performance.now(), dt = VU.last ? now-VU.last : 1000; VU.last=now;
+  VU.playing = !!playing && vu.some(v=>+v>0);
+  if (VU.playing){
+    const n = Math.max(1, Math.min(vu.length, Math.round(dt/100)));
+    VU.buf.push(...vu.slice(0,n).reverse().map(v=>Math.max(0, Math.min(100, +v||0))));
+    if (VU.buf.length>30) VU.buf.splice(0, VU.buf.length-30);
+  } else VU.buf.length=0;
+  if (!VU.raf) { VU.t=now; VU.raf=requestAnimationFrame(vuFrame); }
+}
+function vuFrame(now){
+  const box=$('#npVu'); if (!box) { VU.raf=0; return; }
+  const dt=Math.min(100, now-VU.t); VU.t=now;
+  const rate = VU.buf.length>16 ? 1.25 : VU.buf.length<4 ? 0.8 : 1;   // keep ~1 poll queued
+  VU.phase += dt*rate/100;
+  while (VU.phase>=1){ VU.phase-=1;
+    VU.hist.push(VU.buf.length ? VU.buf.shift() : VU.hist[VU_N-1]*0.55); VU.hist.shift(); }
+  // points: x scrolls left by `phase`; y from the level (top = loud)
+  const dx = VU_W/(VU_N-3), pts = VU.hist.map((v,i)=>[(i-1-VU.phase)*dx, VU_H-2 - (VU_H-6)*v/100]);
+  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i=0;i<pts.length-1;i++){                 // Catmull-Rom → Bézier for a smooth curve
+    const p0=pts[Math.max(0,i-1)], p1=pts[i], p2=pts[i+1], p3=pts[Math.min(pts.length-1,i+2)];
+    d += `C${(p1[0]+(p2[0]-p0[0])/6).toFixed(1)},${(p1[1]+(p2[1]-p0[1])/6).toFixed(1)} ${(p2[0]-(p3[0]-p1[0])/6).toFixed(1)},${(p2[1]-(p3[1]-p1[1])/6).toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  const last = pts[pts.length-1][0].toFixed(1);
+  box.querySelector('.vu-line').setAttribute('d', d);
+  box.querySelector('.vu-area').setAttribute('d', `${d}L${last},${VU_H}L${pts[0][0].toFixed(1)},${VU_H}Z`);
+  const quiet = VU.hist.every(v=>v<1) && !VU.buf.length;
+  box.classList.toggle('quiet', quiet);                       // fades out when silent
+  if (quiet && !VU.playing) { VU.raf=0; return; }
+  VU.raf=requestAnimationFrame(vuFrame);
+}
+// centre the meter under the transport buttons (shuffle … more), whatever the layout
+function placeVu(){
+  const box=$('#npVu'), a=$('#npShuffle'), b=$('#npMore'); if (!box||!a||!b) return;
+  const parent=box.offsetParent || box.parentElement; box.style.marginLeft='0';
+  const pr=box.parentElement.getBoundingClientRect(), ra=a.getBoundingClientRect(), rb=b.getBoundingClientRect();
+  if (!ra.width) return;
+  const centre=(ra.left+rb.right)/2 - pr.left, w=box.getBoundingClientRect().width;
+  box.style.marginLeft = Math.max(0, Math.min(pr.width-w, centre-w/2)).toFixed(0)+'px';
+}
+addEventListener('resize', ()=>placeVu());
+
 /* ---- Settings ---- */
 async function viewSettings(){
   loading();
@@ -1804,10 +1859,9 @@ function updateUI(){
     const np=$('#npPlay'); if (np.dataset.s!==String(playing)){ np.innerHTML=pi; np.dataset.s=String(playing); }
     setArt($('#npArt'), src, tkey+'|'+S.artVersion, 'np');
     if (!src){ const bg=$('#npBg'); bg && bg.classList.remove('ok'); }
-    const vu=st.vu||[]; const bars=$('#npVu').children;
-    for (let i=0;i<bars.length;i++){ const v=+vu[i]||0; bars[i].style.height = Math.max(4, Math.min(100, v)) + '%'; }
-    $('#npVu').style.visibility = vu.some(v=>+v>0) ? 'visible' : 'hidden';      // no flat line when silent
-    $('#npVu').style.display = S.output>0 ? 'none':'flex';
+    vuFeed(st.vu||[], playing);
+    $('#npVu').classList.toggle('off', S.output>0);
+    placeVu();
     const extra=[]; if (st.recording) extra.push('● Recording'); if (st.cdloaded) extra.push('CD: '+st.cdstatus); if (st.alert) extra.push(st.alert);
     $('#npExtra').textContent = extra.join('  ·  ');
     refreshUpNext(tkey !== S.upNextTrack); S.upNextTrack = tkey;
