@@ -348,6 +348,32 @@ input[type=range][disabled]{opacity:.35;cursor:default}
 .hero .art.editable::after{content:"Change artwork";position:absolute;inset:auto 0 0 0;z-index:2;padding:8px;text-align:center;font-size:12px;font-weight:600;background:linear-gradient(transparent,rgba(0,0,0,.75));opacity:0;transition:opacity .15s}
 .hero .art.editable:hover::after{opacity:1}
 
+
+/* CD ripping */
+nav button{position:relative}
+.nav-dot{position:absolute;top:8px;left:30px;width:8px;height:8px;border-radius:50%;background:var(--accent);display:none}
+.nav-dot.on{display:block}
+.toast .toast-act{margin-left:10px;font-weight:700;color:var(--accent);text-decoration:underline}
+.cd-wrap{display:grid;grid-template-columns:minmax(160px,260px) minmax(0,1fr);gap:28px;align-items:start}
+.cd-cover{position:relative;aspect-ratio:1;border-radius:var(--radius);overflow:hidden;background:var(--panel);box-shadow:0 14px 40px rgba(0,0,0,.35)}
+.cd-cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cd-status{position:sticky;top:8px;z-index:3;display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--line);margin:0 0 18px;font-weight:550}
+.cd-status.busy{border-color:var(--accent)}
+.cd-status .spinner{margin:0;width:16px;height:16px}
+.cd-matches{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+.cd-match{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);text-align:left;max-width:280px}
+.cd-match b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:250px}
+.cd-match small{color:var(--text-3)}
+.cd-match.on{border-color:var(--accent);background:var(--accent-soft)}
+.cd-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.cd-fields label,.cd-tracks label{display:block;font-size:12px;color:var(--text-3);margin-bottom:4px}
+.cd-in{width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:9px;padding:8px 10px;outline:none}
+.cd-in:focus{border-color:var(--accent)}
+.cd-tracks ol{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.cd-tracks li{display:grid;grid-template-columns:28px 1fr;align-items:center;gap:8px}
+.cd-tracks li span{font:12px var(--mono);color:var(--text-3);text-align:right}
+@media (max-width:700px){ .cd-wrap{grid-template-columns:1fr} .cd-cover{max-width:220px} .cd-fields{grid-template-columns:1fr} }
+
 /* search results */
 .results-section{margin-bottom:8px}
 
@@ -454,6 +480,7 @@ input[type=range][disabled]{opacity:.35;cursor:default}
       <button data-go="albums"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4"/></svg><span>Albums</span></button>
       <button data-go="playlists"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h8"/><path d="M19 15v6M16 18h6"/></svg><span>Playlists</span></button>
       <button data-go="radio"><svg class="i" viewBox="0 0 24 24"><path d="M5 9a10 10 0 0 1 14 0M8 12a6 6 0 0 1 8 0"/><circle cx="12" cy="16" r="2"/></svg><span>Radio</span></button>
+      <button data-go="cd" id="navCd"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3a9 9 0 0 1 9 9" opacity=".5"/></svg><span>CD</span><i class="nav-dot" id="cdDot"></i></button>
       <button data-go="settings"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>Settings</span></button>
     </nav>
     <div class="side-np" id="sideNp" title="Now playing"></div>
@@ -608,7 +635,9 @@ function initials(n){ n=String(n||'?').replace(/^the\s+/i,''); const w=n.split(/
 function placeholder(name){ const h=hue(name||'x'); return `<div class="ph" style="background:linear-gradient(135deg,hsl(${h} 35% 26%),hsl(${(h+50)%360} 40% 14%))"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg></div>`; }
 function setRangeFill(el){ const p = (el.value-el.min)/(el.max-el.min)*100; el.style.setProperty('--p', p+'%'); }
 let toastTimer;
-function toast(msg){ document.querySelectorAll('.toast').forEach(t=>t.remove()); const t=document.createElement('div'); t.className='toast'; t.textContent=msg; document.body.append(t); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.remove(),2200); }
+function toast(msg, action, ms){ document.querySelectorAll('.toast').forEach(t=>t.remove()); const t=document.createElement('div'); t.className='toast'; t.textContent=msg;
+  if (action){ const b=document.createElement('button'); b.textContent=action.label; b.className='toast-act'; b.onclick=()=>{ t.remove(); action.run(); }; t.append(' ', b); }
+  document.body.append(t); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.remove(), ms || (action?6000:2200)); }
 const icon = {
   play:'<svg class="i fill" viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>',
   pause:'<svg class="i fill" viewBox="0 0 24 24"><rect x="6" y="4.5" width="4" height="15" rx="1"/><rect x="14" y="4.5" width="4" height="15" rx="1"/></svg>',
@@ -780,7 +809,7 @@ const main = $('#main');
 // Each sidebar section works like a tab: it remembers the last page you were on inside it
 // (e.g. the artist you had open) and the scroll position of each page. Clicking the section
 // you're already in takes you back to its top-level list.
-const SECTIONS = ['now','artists','albums','playlists','radio','settings'];
+const SECTIONS = ['now','artists','albums','playlists','radio','cd','settings'];
 const sectionOf = name => SECTIONS.includes(name) ? name : null;
 S.section = 'now';
 S.sectionRoute = {};     // section -> last route object
@@ -805,7 +834,7 @@ function go(name, args={}, push=true){
 function render(){
   const r=S.route;
   return ({now:viewNow, artists:viewArtists, albums:viewAlbums, artist:viewArtist, album:viewAlbum,
-    playlists:viewPlaylists, radio:viewRadio, settings:viewSettings, search:viewSearch, missingart:viewMissingArt}[r.name]||viewNow)(r);
+    playlists:viewPlaylists, radio:viewRadio, cd:viewCD, settings:viewSettings, search:viewSearch, missingart:viewMissingArt}[r.name]||viewNow)(r);
 }
 function backBtn(){ return S.history.length ? `<button class="pill" onclick="goBack()">${icon.back}Back</button>` : ''; }
 function goBack(){ const r=S.history.pop(); if (r) go(r.name, r, false); }
@@ -1307,6 +1336,140 @@ async function viewMissingArt(){
   $('#recheck').onclick=async()=>{ await localJSON('/local/art-scan',{method:'POST'}).catch(()=>{}); viewMissingArt(); };
 }
 
+/* ---- CD ripping ---- */
+// The Brennan reports the disc in `status` (cdloaded, cdstatus, discid, cddbmatches, background)
+// and looks it up itself (getCDDB). We add MusicBrainz matches by disc ID, let you edit the names
+// and pick a cover, then send it back with newRip — the same call the Brennan's own page makes.
+S.cd = { key:null, matches:[], sel:0, edits:{}, art:null, sent:false };
+function isRipping(st){ return /rip/i.test(st?.cdstatus||'') || /rip/i.test(st?.background||''); }
+function cdStatusChanged(prev, st){
+  const dot = $('#cdDot'); if (dot) dot.classList.toggle('on', !!st.cdloaded);
+  if (!prev) return;
+  if (!prev.loaded && st.cdloaded && S.route.name!=='cd')
+    toast('CD inserted', {label:'Rip it', run:()=>openSection('cd')});
+  if (prev.ripping && !isRipping(st)) { toast('Rip finished — the album is in your library'); S.cd.sent=false; refreshLibrary(); }
+  if (S.route.name==='cd' && (prev.loaded !== !!st.cdloaded || (S.cd.key && S.cd.key !== cdKey(st)))) viewCD();
+  else if (S.route.name==='cd') updateCdStatus();
+}
+const cdKey = st => (st.discid||'') + '|' + (st.cddbmatches??'');
+function updateCdStatus(){
+  const el=$('#cdStatus'); if(!el) return; const st=S.status||{};
+  const busy=isRipping(st);
+  el.className='cd-status'+(busy?' busy':'');
+  const bg = st.background && st.background!=='Idle' ? ' — '+clean(st.background) : '';
+  el.innerHTML = (busy?'<div class="spinner"></div>':'') + esc((st.cdstatus||'—') + bg);
+  const rip=$('#cdRip'); if (rip) { rip.disabled = busy || S.cd.sent; rip.textContent = busy ? 'Ripping…' : (S.cd.sent ? 'Starting…' : 'Rip CD'); }
+}
+async function viewCD(){
+  let st; try { st = await api('status'); S.status = st; } catch { return offlineView(); }
+  if (S.route.name!=='cd') return;
+  if (!st.cdloaded){
+    S.cd.key=null;
+    main.innerHTML = `<div class="view"><h1>CD</h1><p class="sub">Rip CDs into your library</p>
+      <div class="cd-status" id="cdStatus"></div>
+      <div class="empty" style="text-align:left;padding:10px 0">No disc in the Brennan. Put one in and this page will pick it up.</div></div>`;
+    return updateCdStatus();
+  }
+  const key = cdKey(st);
+  if (S.cd.key !== key){
+    S.cd = { key, matches:[], sel:0, edits:{}, art:null, sent:false, loading:true };
+    main.innerHTML = `<div class="view"><h1>CD</h1><div class="cd-status" id="cdStatus"></div><div class="spinner"></div><p class="sub" style="text-align:center">Looking up this disc…</p></div>`;
+    updateCdStatus();
+    const [b, mb] = await Promise.all([
+      api('getCDDB').catch(()=>[]),
+      st.discid ? localJSON('/local/cd-lookup?discid='+encodeURIComponent(st.discid)).catch(()=>({matches:[]})) : Promise.resolve({matches:[]}),
+    ]);
+    const brennan = (Array.isArray(b)?b:[]).filter(m=>m && Array.isArray(m.tracks)).map(m=>({...m, source:'Brennan lookup', _raw:m}));
+    const same = (x,y)=> clean(x.album).toLowerCase()===clean(y.album).toLowerCase() && clean(x.artist).toLowerCase()===clean(y.artist).toLowerCase() && x.tracks.length===y.tracks.length;
+    const extra = (mb.matches||[]).filter(m=>!brennan.some(x=>same(x,m)));
+    S.cd.matches = [...brennan, ...extra];
+    S.cd.loading=false;
+    if (S.route.name!=='cd') return;
+  }
+  renderCD();
+}
+function cdCurrent(){
+  const m = S.cd.matches[S.cd.sel];
+  const e = S.cd.edits[S.cd.sel] || {};
+  const n = m ? m.tracks.length : (e.tracks?.length || 0);
+  return { m, album: e.album ?? (m ? clean(m.album) : ''), artist: e.artist ?? (m ? clean(m.artist) : ''),
+           tracks: e.tracks ?? (m ? m.tracks.map(t=>clean(t)) : []), art: S.cd.art ?? (m?.art || null), n };
+}
+function renderCD(){
+  const st=S.status||{}; const c=cdCurrent(); const ms=S.cd.matches;
+  main.innerHTML = `<div class="view"><h1>CD</h1><p class="sub">Check the names, pick a cover, then rip</p>
+    <div class="cd-status" id="cdStatus"></div>
+    ${ms.length ? `<div class="cd-matches">${ms.map((m,i)=>`<button class="cd-match ${i===S.cd.sel?'on':''}" data-i="${i}"><b>${esc(clean(m.album))}</b><small>${esc(clean(m.artist))} · ${m.tracks.length} tracks${m.year?' · '+esc(m.year):''} · ${esc(m.source)}</small></button>`).join('')}</div>`
+      : `<div class="af-note" style="margin-bottom:14px">Neither the Brennan nor MusicBrainz recognised this disc. Type the names in below.</div>`}
+    <div class="cd-wrap">
+      <div>
+        <div class="cd-cover" id="cdCover">${placeholder(c.album||'CD')}${c.art?`<img src="${esc(c.art)}" alt="" onerror="this.remove()">`:''}</div>
+        <div class="toolbar" style="margin-top:12px"><button class="pill" id="cdFindArt">Find cover…</button>${c.art?'<button class="pill" id="cdNoArt">No cover</button>':''}</div>
+      </div>
+      <div>
+        <div class="cd-fields">
+          <div><label for="cdArtist">Artist</label><input class="cd-in" id="cdArtist" value="${esc(c.artist)}"></div>
+          <div><label for="cdAlbum">Album</label><input class="cd-in" id="cdAlbum" value="${esc(c.album)}"></div>
+        </div>
+        <div class="toolbar" style="margin:0 0 16px">
+          <button class="btn" id="cdRip">Rip CD</button>
+          <button class="pill" id="cdRelook">Look up again</button>
+          <button class="pill" id="cdEject">Eject</button>
+        </div>
+        <div class="cd-tracks"><label>Tracks</label>${c.tracks.length ? `<ol>${c.tracks.map((t,i)=>`<li><span>${i+1}</span><input class="cd-in" data-t="${i}" value="${esc(t)}"></li>`).join('')}</ol>` : '<div class="af-note">No track list for this disc — the Brennan will name the tracks by number.</div>'}</div>
+        <p class="af-note" style="margin-top:14px">Rips in ${esc(st.compression||'FLAC')} (change in Settings → Ripping). The album appears in your library when it's done.</p>
+      </div>
+    </div></div>`;
+  updateCdStatus();
+  const save = () => { const e = S.cd.edits[S.cd.sel] = S.cd.edits[S.cd.sel] || {};
+    e.artist=$('#cdArtist').value; e.album=$('#cdAlbum').value;
+    const ts=[...main.querySelectorAll('[data-t]')]; if (ts.length) e.tracks=ts.map(x=>x.value); };
+  main.querySelectorAll('.cd-in').forEach(i=>i.addEventListener('input', save));
+  main.querySelectorAll('.cd-match').forEach(b=>b.onclick=()=>{ save(); S.cd.sel=+b.dataset.i; S.cd.art=null; renderCD(); });
+  $('#cdRelook').onclick=()=>{ S.cd.key=null; api('getCDDB').catch(()=>{}); viewCD(); };
+  $('#cdEject').onclick=async()=>{ await api('eject').catch(()=>{}); toast('Ejecting…'); setTimeout(viewCD, 1500); };
+  if ($('#cdNoArt')) $('#cdNoArt').onclick=()=>{ S.cd.art=''; renderCD(); };
+  $('#cdFindArt').onclick=()=>{ save(); openCdArtPicker(); };
+  $('#cdRip').onclick=ripCD;
+}
+function openCdArtPicker(){
+  const c=cdCurrent();
+  const sc=document.createElement('div'); sc.className='scrim';
+  sc.innerHTML=`<div class="modal wide"><div class="af-head"><div><h3>Cover for this CD</h3><div class="s">${esc(c.artist)} — ${esc(c.album)}</div></div><div class="x"><button class="iconbtn" id="cpClose"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div></div>
+    <div class="af-body"><div class="af-note" id="cpNote">Searching…</div><div class="af-grid" id="cpGrid"><div class="spinner"></div></div></div>
+    <div class="af-foot"><input type="url" id="cpUrl" placeholder="…or paste an image URL"><button class="pill" id="cpUse">Use URL</button></div></div>`;
+  document.body.append(sc);
+  const close=()=>sc.remove(); sc.onclick=e=>{ if(e.target===sc) close(); }; $('#cpClose').onclick=close;
+  const pick=url=>{ S.cd.art=url; close(); renderCD(); toast('Cover chosen — it will be added when you rip'); };
+  $('#cpUse').onclick=()=>{ const u=$('#cpUrl').value.trim(); if(/^https?:\/\//.test(u)) pick(u); };
+  localJSON('/local/art-search?artist='+encodeURIComponent(c.artist)+'&album='+encodeURIComponent(c.album)).then(j=>{
+    $('#cpNote').textContent = j.results.length ? 'Click a cover to use it.' : 'Nothing found — paste a URL instead.';
+    $('#cpGrid').innerHTML = j.results.map((r,i)=>`<button class="af-tile" data-i="${i}"><div class="im"><img src="${esc(r.thumb)}" alt="" loading="lazy" onerror="this.closest('.af-tile').remove()"><span class="badge">${esc(r.source)}</span></div><div class="cap">${esc(r.album)}${r.year?' · '+esc(r.year):''}<br>${esc(r.artist)}</div></button>`).join('');
+    $('#cpGrid').querySelectorAll('.af-tile').forEach(t=>t.onclick=()=>pick(j.results[+t.dataset.i].url));
+  }).catch(()=>{ $('#cpNote').textContent='Search failed — paste a URL instead.'; $('#cpGrid').innerHTML=''; });
+}
+async function ripCD(){
+  const c=cdCurrent(); const m=c.m;
+  if (!c.artist.trim() || !c.album.trim()) return toast('Add an artist and album name first');
+  if (isRipping(S.status)) return toast('Already ripping');
+  // Start from the Brennan's own match record (it may carry fields we don't know about) and
+  // overwrite just the names and cover.
+  const meta = { ...(m?._raw || {}), album: c.album.trim(), artist: c.artist.trim() };
+  if (c.tracks.length) meta.tracks = c.tracks.map((t,i)=>t.trim() || `Track ${i+1}`);
+  else if (m) meta.tracks = m.tracks;
+  if (c.art) meta.art = c.art; else delete meta.art;
+  S.cd.sent = true; updateCdStatus();
+  try {
+    // the Brennan's own page tells the unit about disc art this way (URL raw, before time)
+    if (c.art) await fetch('/api?artURL&url='+c.art+'&time='+Date.now()).catch(()=>{});
+    const fd = new FormData(); fd.append('rip', JSON.stringify(meta));
+    const r = await fetch('/api?newRip', {method:'POST', body: fd});
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    toast(`Ripping “${meta.album}”…`);
+  } catch(e){ S.cd.sent=false; updateCdStatus(); return toast('The Brennan didn’t accept the rip: '+e.message); }
+  setTimeout(()=>{ if (!isRipping(S.status)) { S.cd.sent=false; updateCdStatus(); } }, 15000);
+}
+
 /* ---- Settings ---- */
 async function viewSettings(){
   loading();
@@ -1453,7 +1616,9 @@ async function poll(){
     const st = await api('status');
     if (typeof st !== 'object') throw new Error('bad status');
     const prevTrack = S.status?.trackid;
+    const prevCd = S.status ? {loaded: !!S.status.cdloaded, ripping: isRipping(S.status)} : null;
     S.status = st; failCount=0;
+    cdStatusChanged(prevCd, st);
     if (prevTrack && prevTrack !== st.trackid && S.route.name==='playlists' && !document.querySelector('.menu,.scrim'))
       setTimeout(()=>viewPlaylists({sel:S.route.sel, quiet:true}), 600);
     resolveOutput(st);
@@ -1625,7 +1790,7 @@ $('#rescanBtn').onclick=rescan;
    ========================================================================= */
 (function boot(){
   const h=location.hash.slice(1).split('/'); const name=h[0]||'now', id=+h[1]||undefined;
-  const valid=['now','artists','albums','artist','album','playlists','radio','settings','missingart'];
+  const valid=['now','artists','albums','artist','album','playlists','radio','cd','settings','missingart'];
   const start = valid.includes(name)?name:'now';
   S.section = sectionOf(start) || ({artist:'artists', album:'albums', missingart:'albums'}[start]) || 'now';
   go(start, id?{id}:{}, false);
