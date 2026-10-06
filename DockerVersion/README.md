@@ -18,7 +18,7 @@ phone, tablet or computer on your home network** while the server is running.
 | Many devices at once | one browser | one shared status poll for every open page |
 | Phone layout | basic | tab bar, compact player, touch-friendly rows, home-screen icon |
 
-Everything else (discovery, artwork tools, queue, Sonos, themes) is the same code.
+Everything else (discovery, artwork tools, queue, Sonos, themes, CD ripping) is the same code.
 
 ## Run it with Docker (recommended)
 

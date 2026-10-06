@@ -511,3 +511,44 @@ class MissingScan:
             self._classify()
             self.state, self.finished_at = "done", time.time()
         self._persist()
+
+
+# --------------------------------------------------------------------------- #
+# CD lookup (MusicBrainz, by the disc ID the Brennan reports)
+# --------------------------------------------------------------------------- #
+
+def cd_lookup(discid: str) -> dict:
+    """Albums matching an inserted CD, from MusicBrainz, in the same shape the
+    Brennan's own getCDDB uses: {album, artist, tracks:[...], art}."""
+    discid = (discid or "").strip()
+    if not discid or not re.match(r"^[A-Za-z0-9._-]{10,40}$", discid):
+        return {"matches": [], "error": "no disc id"}
+    try:
+        data = _get_json("https://musicbrainz.org/ws/2/discid/" + urllib.parse.quote(discid)
+                         + "?inc=recordings+artist-credits&fmt=json", timeout=12)
+    except Exception as e:
+        return {"matches": [], "error": str(e)}
+    out = []
+    for rel in (data.get("releases") or [])[:8]:
+        media = rel.get("media") or []
+        medium = next((m for m in media if any(d.get("id") == discid for d in (m.get("discs") or []))),
+                      media[0] if media else None)
+        if not medium:
+            continue
+        tracks = [((t.get("recording") or {}).get("title") or t.get("title") or "") for t in (medium.get("tracks") or [])]
+        credit = "".join((c.get("name", "") + c.get("joinphrase", "")) for c in (rel.get("artist-credit") or []))
+        title = rel.get("title", "")
+        if len(media) > 1 and medium.get("position"):
+            title += f" (Disc {medium['position']})"
+        art = None
+        if (rel.get("cover-art-archive") or {}).get("front"):
+            art = _final_url(f"https://coverartarchive.org/release/{rel['id']}/front-500")
+        out.append({"source": "MusicBrainz", "album": title, "artist": credit, "tracks": tracks,
+                    "year": (rel.get("date") or "")[:4], "art": art, "mbid": rel.get("id")})
+    # identical releases (different pressings) → keep the first of each
+    seen, uniq = set(), []
+    for m in out:
+        k = (m["album"].lower(), m["artist"].lower(), len(m["tracks"]))
+        if k not in seen:
+            seen.add(k); uniq.append(m)
+    return {"matches": uniq}

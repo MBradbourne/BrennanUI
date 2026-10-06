@@ -491,6 +491,9 @@ class Handler(BaseHTTPRequestHandler):
             if not (artist or album):
                 return self.send_json(400, {"error": "artist or album required"})
             return self.send_json(200, artwork.search(artist, album))
+        if path == "/local/cd-lookup":
+            q = urllib.parse.parse_qs(parsed.query)
+            return self.send_json(200, artwork.cd_lookup(q.get("discid", [""])[0]))
         if path == "/local/art-scan":
             return self.send_json(200, {**self.missing.snapshot(), "scan_gen": getattr(self.missing, "scan_gen", ""),
                                         "gen": self.library.gen})
@@ -506,6 +509,10 @@ class Handler(BaseHTTPRequestHandler):
         if length > 25_000_000:
             return self.send_json(413, {"error": "file too large"})
         body = self.rfile.read(length) if length else b"{}"
+        if path == "/api":
+            # POST pass-through (used by CD ripping: newRip takes the disc's metadata as a form)
+            return self.proxy_post(urllib.parse.urlsplit(self.path).query, body,
+                                   self.headers.get("Content-Type", "application/octet-stream"))
         if path == "/local/art-upload":
             qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             return self.art_set(qs.get("id", ["0"])[0], data=body, expect=qs.get("expect", [""])[0])
@@ -598,6 +605,28 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_bytes(404, b"Not found", "text/plain")
         ctype = MIME.get(target.suffix.lower(), "application/octet-stream")
         self.send_bytes(200, target.read_bytes(), ctype, {"Cache-Control": "no-cache"})
+
+    def proxy_post(self, query: str, body: bytes, ctype: str):
+        ip = self.device.ip
+        if not ip:
+            return self.send_json(503, {"error": "device_unavailable"})
+        cmd = query.split("&", 1)[0]
+        if cmd not in ("newRip",):          # only the commands the UI actually posts
+            return self.send_json(400, {"error": f"POST not allowed for {cmd}"})
+        req = urllib.request.Request(f"http://{ip}/b2cgi.fcgi?{query}", data=body, method="POST",
+                                     headers={"Content-Type": ctype})
+        try:
+            with urllib.request.urlopen(req, timeout=PROXY_TIMEOUT) as r:
+                out = r.read()
+                rtype = r.headers.get("Content-Type", "text/plain")
+        except urllib.error.HTTPError as e:
+            return self.send_json(e.code, {"error": f"Brennan answered {e.code}"})
+        except (urllib.error.URLError, socket.timeout, ConnectionError, OSError) as e:
+            self.device.report_failure()
+            return self.send_json(502, {"error": "device_unreachable", "detail": str(e)})
+        log(f"{cmd} sent to the Brennan")
+        self.library.bump()
+        return self.send_bytes(200, out, rtype, {"Cache-Control": "no-store"})
 
     def proxy(self, query: str):
         ip = self.device.ip
