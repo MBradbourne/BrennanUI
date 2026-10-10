@@ -14,7 +14,12 @@
 // Apply the saved theme before first paint (no flash). "system" follows the OS setting.
 (function(){ var t='dark'; try{ t=localStorage.getItem('brennan.theme')||'dark'; }catch(e){}
   var light = t==='light' || (t==='system' && window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches);
-  document.documentElement.setAttribute('data-theme', light?'light':'dark'); })();
+  document.documentElement.setAttribute('data-theme', light?'light':'dark');
+  // Layout & Look (Settings): applied before first paint too. Kept in sync with LAYOUT_DEFAULT below.
+  try { var L=JSON.parse(localStorage.getItem('brennan.layout')||'{}')||{}, r=document.documentElement;
+    r.setAttribute('data-art', L.art||'m'); r.setAttribute('data-menu', L.menu||'side'); r.setAttribute('data-density', L.density||'comfortable');
+    var sh=L.show||{}; for (var k in sh) if (sh[k]===false) r.classList.add('hide-'+k);
+  } catch(e){} })();
 </script>
 <style>
 :root{
@@ -199,6 +204,10 @@ h2{font:650 18px/1.2 var(--display);margin:28px 0 12px}
 .np-times{display:flex;justify-content:space-between;font:12px var(--mono);color:var(--text-3);margin-top:8px}
 .np-controls{display:flex;align-items:center;gap:clamp(6px,1.2vw,16px);margin-top:clamp(8px,1.6vh,18px);flex-wrap:wrap;max-width:680px}
 .np-controls .grow{flex:1}
+.surprise-btn .dot{fill:currentColor;stroke:none}
+.surprise-btn.rolling svg{animation:roll .6s ease}
+@keyframes roll{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.surprise-btn.rolling svg{animation:none}}
 .np-controls .vol{width:clamp(110px,14vw,180px)}
 .big-play{width:clamp(48px,4.4vw,60px);height:clamp(48px,4.4vw,60px);border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;box-shadow:0 10px 30px rgba(0,0,0,.4);transition:transform .12s}
 .big-play:hover{transform:scale(1.05)}
@@ -431,7 +440,7 @@ nav button{position:relative}
   /* compact player: art + title, play/next, output */
   .pl-art{width:46px;height:46px}
   .pl-center{flex-direction:row}
-  .pl-seek,#shuffleBtn,#prevBtn,#sortBtn{display:none}
+  .pl-seek,#shuffleBtn,#prevBtn,#sortBtn,#surpriseBtn{display:none}
   .pl-buttons{gap:6px}
   .out-btn{padding:8px;border-radius:50%}
   .out-btn span{display:none}
@@ -466,6 +475,91 @@ nav button{position:relative}
   .tracks .num-play{display:inline-grid!important}
   .card .play{opacity:1;transform:none;width:36px;height:36px}
 }
+
+/* ================= Layout & Look (Settings) =================
+   Driven by attributes/classes on <html>: data-art, data-menu, data-density, hide-*. */
+/* artwork size on Now Playing (m = the default sizing above) */
+:root[data-art="s"] .np-art{width:min(clamp(90px,14vw,190px),26vh)}
+:root[data-art="l"] .np-art{width:min(clamp(150px,30vw,440px),50vh)}
+:root[data-art="xl"] .np-art{width:min(clamp(170px,40vw,600px),64vh)}
+@media (max-width:700px){
+  :root[data-art="s"] .np-art{width:min(38vw,22vh)}
+  :root[data-art="l"] .np-art{width:min(74vw,42vh)}
+  :root[data-art="xl"] .np-art{width:min(88vw,52vh)}
+}
+/* show / hide pieces */
+:root.hide-meter .np-vu{display:none!important}
+:root.hide-upnext .np-upnext{display:none!important}
+:root.hide-player{--player:0px}
+:root.hide-player .player{display:none!important}
+:root.hide-surprise .surprise-btn{display:none!important}
+:root.hide-sideart .side-np{display:none!important}
+:root.hide-glow .np-bg{display:none!important}
+/* density */
+:root[data-density="compact"] .tracks td{padding:5px 10px}
+:root[data-density="compact"] .grid{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:16px 12px}
+:root[data-density="compact"] .card .t{margin-top:6px;font-size:13px}
+:root[data-density="compact"] .artist{padding:4px 8px}
+:root[data-density="compact"] .avatar{width:34px;height:34px;font-size:13px}
+:root[data-density="compact"] nav button{padding:6px 12px}
+:root[data-density="compact"] .view{padding-top:18px;padding-bottom:28px}
+:root[data-density="compact"] .np-upnext li{padding:3px 8px}
+:root[data-density="compact"] .hero .art{width:170px;height:170px}
+:root[data-density="compact"] .hero h1{font-size:32px}
+@media (max-width:700px){ :root[data-density="compact"] .grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 8px} }
+/* menu along the top (phones always use bottom tabs) */
+@media (min-width:701px){
+  :root[data-menu="top"]{--sidebar:0px}
+  :root[data-menu="top"] .app{grid-template-columns:1fr;grid-template-rows:auto 1fr var(--player)}
+  :root[data-menu="top"] body.on-now .app{grid-template-rows:auto 1fr 0}
+  :root[data-menu="top"] aside{grid-row:1;grid-column:1;flex-direction:row;align-items:center;gap:10px;border-right:0;border-bottom:1px solid var(--line);padding:0 12px}
+  :root[data-menu="top"] main{grid-row:2;grid-column:1;padding-top:0}
+  :root[data-menu="top"] .player{grid-row:3;grid-column:1}
+  :root[data-menu="top"] .brand{padding:10px 6px;order:0}
+  :root[data-menu="top"] .brand small{display:none}
+  :root[data-menu="top"] nav{flex-direction:row;flex:1;order:1;padding:6px 0;gap:2px;overflow-x:auto;scrollbar-width:none}
+  :root[data-menu="top"] nav button{padding:8px 12px;white-space:nowrap}
+  :root[data-menu="top"] .search{order:2;position:relative;left:auto;top:auto;right:auto;margin:0;padding:0;border:0;background:none;width:clamp(150px,20vw,260px);z-index:auto}
+  :root[data-menu="top"] .search svg{left:10px}
+  :root[data-menu="top"] .side-np{display:none!important}
+  :root[data-menu="top"] .device{order:3;border-top:0;padding:0}
+  :root[data-menu="top"] .device .grow{display:none}
+  :root[data-menu="top"] .nav-dot{top:5px;left:24px}
+}
+@media (min-width:701px) and (max-width:1100px){
+  :root[data-menu="top"] nav button span,:root[data-menu="top"] .brand b{display:none}
+  :root[data-menu="top"] .brand .disc+div{display:none}
+}
+/* menu as tabs along the bottom (like phones), search across the top */
+@media (min-width:701px){
+  :root[data-menu="bottom"]{--sidebar:0px; --tabbar:62px; --topbar:58px}
+  :root[data-menu="bottom"] .app{grid-template-columns:1fr;grid-template-rows:1fr var(--player) var(--tabbar)}
+  :root[data-menu="bottom"] body.on-now .app{grid-template-rows:1fr 0 var(--tabbar)}
+  :root[data-menu="bottom"] main{grid-row:1;grid-column:1;padding-top:var(--topbar)}
+  :root[data-menu="bottom"] .player{grid-row:2;grid-column:1}
+  :root[data-menu="bottom"] aside{grid-row:3;grid-column:1;flex-direction:row;border-right:0;border-top:1px solid var(--line)}
+  :root[data-menu="bottom"] .brand,:root[data-menu="bottom"] .device,:root[data-menu="bottom"] .side-np{display:none!important}
+  :root[data-menu="bottom"] nav{flex-direction:row;justify-content:space-around;width:100%;padding:4px 8px;max-width:900px;margin:0 auto}
+  :root[data-menu="bottom"] nav button{flex:1;flex-direction:column;justify-content:center;gap:2px;padding:6px 0;font-size:11.5px}
+  :root[data-menu="bottom"] nav button span{display:inline}
+  :root[data-menu="bottom"] .nav-dot{top:4px;left:calc(50% + 8px)}
+  :root[data-menu="bottom"] .search{position:fixed;top:0;left:0;right:0;margin:0;padding:10px 16px;z-index:20;background:var(--bg);border-bottom:1px solid var(--line)}
+  :root[data-menu="bottom"] .search svg{left:28px}
+  :root[data-menu="bottom"] .toast{bottom:calc(var(--player) + var(--tabbar) + 14px)}
+}
+/* Settings: accent swatches and the show/hide list */
+.swatches{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-end}
+.swatch{width:24px;height:24px;flex:none;border-radius:50%;border:2px solid transparent;box-shadow:0 0 0 1px var(--line) inset;position:relative}
+.swatch.on{border-color:var(--text)}
+.swatch.art{width:auto;height:26px;padding:0 10px;border-radius:999px;background:var(--bg-2);font-size:12px;color:var(--text-2);box-shadow:0 0 0 1px var(--line) inset}
+.swatch.art.on{color:var(--text)}
+.set .note{display:block;color:var(--text-3);font-size:12px;margin-top:2px}
+.showlist{display:grid;grid-template-columns:1fr;gap:0}
+.showlist label{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;color:var(--text-2);cursor:pointer;border-top:1px solid var(--row-line)}
+.showlist label:first-child{border-top:0}
+#layoutBox{grid-column:1/-1}
+.layout-cols{display:grid;grid-template-columns:1.25fr 1fr;gap:0 40px}
+@media (max-width:900px){ .layout-cols{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
@@ -507,6 +601,7 @@ nav button{position:relative}
         <button class="iconbtn" id="prevBtn" title="Previous"><svg class="i fill" viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
         <button class="pl-play" id="playBtn" title="Play / Pause (Space)"></button>
         <button class="iconbtn" id="nextBtn" title="Next"><svg class="i fill" viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+        <button class="iconbtn surprise-btn" id="surpriseBtn" title="Surprise me — play a random song (R)"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.2" class="dot"/><circle cx="15.5" cy="15.5" r="1.2" class="dot"/><circle cx="12" cy="12" r="1.2" class="dot"/><circle cx="15.5" cy="8.5" r="1.2" class="dot"/><circle cx="8.5" cy="15.5" r="1.2" class="dot"/></svg></button>
         <button class="iconbtn" id="sortBtn" title="Library order"><svg class="i" viewBox="0 0 24 24"><path d="M7 4v16M3 16l4 4 4-4M14 6h7M14 12h5M14 18h3"/></svg></button>
       </div>
       <div class="pl-seek"><span id="tIn">0:00</span><input type="range" id="seek" min="0" max="1000" value="0" aria-label="Seek"><span id="tLen">0:00</span></div>
@@ -527,6 +622,18 @@ nav button{position:relative}
    API
    ========================================================================= */
 const ID = { ALBUM:1e6, TRACK:2e6, ARTIST:3e6, PLAYLIST:4e6, RADIO:5e6, PRESET:6e6 };
+const ACCENTS = { amber:['#f0a43a','#b46400'], rose:['#f06292','#c2185b'], violet:['#b39dff','#6a3fc8'], blue:['#5aa9ff','#1565c0'],
+                  teal:['#34d1bf','#00796b'], green:['#72d27c','#2e7d32'], red:['#ff6b6b','#c62828'] };
+const SHOW_ITEMS = [ ['meter','Level meter'], ['upnext','Up next'], ['player','Player bar (other pages)'],
+                     ['surprise','Surprise me button'], ['sideart','Sidebar artwork'], ['glow','Artwork glow behind Now Playing'] ];
+const LAYOUT_DEFAULT = { art:'m', menu:'side', density:'comfortable', accent:'art',
+                         show:{ meter:true, upnext:true, player:true, surprise:true, sideart:true, glow:true } };
+function loadLayout(){
+  let saved={}; try { saved = JSON.parse(localStorage.getItem('brennan.layout')||'{}') || {}; } catch {}
+  return { ...LAYOUT_DEFAULT, ...saved, show:{ ...LAYOUT_DEFAULT.show, ...(saved.show||{}) } };
+}
+let L = loadLayout();
+applyFixedAccent();
 const kind = id => id>=1e6&&id<2e6?'album':id>=2e6&&id<3e6?'track':id>=3e6&&id<4e6?'artist':id>=4e6&&id<5e6?'playlist':id>=5e6&&id<6e6?'radio':'other';
 
 // Build a query string for the unit. Order matters: `string`/`name` must be last.
@@ -642,6 +749,7 @@ function toast(msg, action, ms){ document.querySelectorAll('.toast').forEach(t=>
   if (action){ const b=document.createElement('button'); b.textContent=action.label; b.className='toast-act'; b.onclick=()=>{ t.remove(); action.run(); }; t.append(' ', b); }
   document.body.append(t); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.remove(), ms || (action?6000:2200)); }
 const icon = {
+  up:'<svg class="i" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
   play:'<svg class="i fill" viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>',
   pause:'<svg class="i fill" viewBox="0 0 24 24"><rect x="6" y="4.5" width="4" height="15" rx="1"/><rect x="14" y="4.5" width="4" height="15" rx="1"/></svg>',
   more:'<svg class="i fill" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
@@ -711,12 +819,38 @@ async function play(id, label){
   try { await api('playID', {[id]:true, ...sonosParam()}); if (label) toast('Playing '+label); setTimeout(poll,350); }
   catch { toast('Couldn’t reach the Brennan'); }
 }
+/* Surprise me: pick a random track from the whole library and play it. Track IDs are
+   2,000,000 + position, so any number below the library's track count is a real track. */
+let surpriseInfo = { gen:null, tracks:0, at:0 }, surpriseBusy = false;
+async function surprise(){
+  if (surpriseBusy) return; surpriseBusy = true;
+  document.querySelectorAll('.surprise-btn').forEach(b=>{ b.classList.remove('rolling'); void b.offsetWidth; b.classList.add('rolling'); });
+  try {
+    if (surpriseInfo.gen !== S.gen || !surpriseInfo.tracks || Date.now()-surpriseInfo.at > 300000) {
+      const info = await api('getWebInfo');
+      surpriseInfo = { gen:S.gen, tracks: Math.max(0, (+info.tracks||0) - (+info.USBTracks||0)), at:Date.now() };
+    }
+    const n = surpriseInfo.tracks; if (!n) return toast('No songs on the Brennan to pick from');
+    const current = +(S.status?.trackid||0);
+    let id; for (let i=0;i<5;i++){ id = ID.TRACK + Math.floor(Math.random()*n); if (id!==current) break; }
+    await api('playID', {[id]:true, ...sonosParam()});
+    toast('Surprise! Picking a song…', {label:'Another', run:surprise});
+    setTimeout(async()=>{
+      await poll();
+      if (S.output===0 && S.status && +S.status.trackid===id && S.status.track)
+        toast(`Surprise: ${cleanTrack(clean(S.status.track))} — ${clean(S.status.artist||'')}`, {label:'Another', run:surprise}, 8000);
+    }, 900);
+  } catch { toast('Couldn’t reach the Brennan'); }
+  finally { setTimeout(()=>{ surpriseBusy=false; }, 700); }
+}
 async function queue(id, label){
+  const beforeQ = S.output>0 ? await sonosQueue().catch(()=>null) : null;
   try { await api('queueID', {id, ...sonosParam()}); } catch { return toast('Couldn’t add to queue'); }
   S.cache.playlists=null;
   const what = label ? `“${cleanTrack(label)}”` : 'That';
-  // A Sonos room keeps its own queue on the speaker; the Brennan's Queue playlist stays empty.
-  if (S.output>0) { toast(`${what} sent to ${outputName()}’s own Sonos queue (not the Brennan Queue)`); return; }
+  // A Sonos room plays from its own queue on the speaker (the one the Sonos app shows);
+  // queueID adds to the end of it. The launcher reads that queue straight from the speaker.
+  if (S.output>0) return sonosQueued(what, beforeQ);
   // On the Brennan, the Queue playlist holds the track that's playing (first) plus what's
   // waiting. Queueing while nothing is playing from the Queue starts that track straight away.
   let q = null; try { q = await getQueue(); } catch {}
@@ -727,6 +861,71 @@ async function queue(id, label){
   else toast(`${what} added — ${up.length} track${up.length===1?'':'s'} up next`);
   refreshUpNext(true);
 }
+let sonosPosBusy=false;
+async function fetchSonosPos(room){
+  if (sonosPosBusy) return; sonosPosBusy=true;
+  try {
+    const r = await fetch('/local/sonos/position?room='+encodeURIComponent(room));
+    const j = r.ok ? await r.json() : null;
+    S.sonosPos = j ? { ...j, room, at: performance.now() } : { room, failed:true, at: performance.now() };
+    updateUI();
+  } catch { S.sonosPos = { room, failed:true, at: performance.now() }; }
+  finally { sonosPosBusy=false; }
+}
+// elapsed/total for the bar: Brennan status, or the Sonos speaker's own position (ticking locally)
+function trackTimes(st){
+  if (S.output>0) {
+    const p=S.sonosPos;
+    if (!p || p.failed || p.room!==sonosRoom()) return { dur:0, into:0, seekable:false };
+    const into = p.into + (p.playing && S.sonosStatus?.playing ? (performance.now()-p.at)/1000 : 0);
+    return { dur:p.duration, into: Math.min(p.duration||Infinity, into), seekable: p.duration>0 };
+  }
+  const dur=+st.duration||0;
+  return { dur, into:+st.timeIntoTrack||0, seekable: dur>0 };
+}
+/* ---- Sonos room queues (read and edited through the launcher, see sonos.py) ---- */
+const sonosRoom = () => (S.status?.sonos||[])[S.output-1] || '';
+async function sonosQueue(){
+  const r = await fetch('/local/sonos/queue?room='+encodeURIComponent(sonosRoom()));
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(j.error||('HTTP '+r.status));
+  return j;
+}
+async function sonosAct(action, body){
+  const r = await fetch('/local/sonos/'+action, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({room:sonosRoom(), ...body})});
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(j.error||('HTTP '+r.status));
+  return j;
+}
+const sonosUpcoming = q => q && q.fromQueue ? q.items.filter(t=>t.n>q.current) : (q?.items||[]);
+// after queueID: the new tracks are at the end of the room's queue
+async function sonosQueued(what, before, playNext){
+  await new Promise(r=>setTimeout(r,500));
+  let q=null; try { q = await sonosQueue(); } catch {}
+  const room = outputName();
+  if (!q) { toast(`${what} added to ${room}’s Sonos queue`); return refreshUpNext(true); }
+  const added = before ? Math.max(0, q.total - before.total) : 0;
+  const next = q.current + 1;
+  const start = q.total - added + 1;
+  const moveUp = async () => {
+    if (!added || !q.fromQueue || start <= next) return toast(`${what} is already next`);
+    try { await sonosAct('move', {start, count:added, before:next}); toast(`${what} plays next on ${room}`); }
+    catch(e){ toast('Couldn’t move it: '+e.message); }
+    refreshUpNext(true);
+  };
+  if (playNext) return moveUp();
+  const ahead = sonosUpcoming(q).length - added;
+  toast(ahead>0 ? `${what} added to ${room} — after ${ahead} other track${ahead===1?'':'s'}` : `${what} added to ${room} — up next`,
+        ahead>0 && added ? {label:'Play next', run:moveUp} : null, ahead>0 ? 7000 : 0);
+  refreshUpNext(true);
+}
+async function playNext(id, label){
+  const what = label ? `“${cleanTrack(label)}”` : 'That';
+  const before = await sonosQueue().catch(()=>null);
+  try { await api('queueID', {id, ...sonosParam()}); } catch { return toast('Couldn’t add to queue'); }
+  return sonosQueued(what, before, true);
+}
+
 // Queue items still to come: skip the first entry when it's the track playing right now.
 function upcoming(q){
   const items = q?.items || [];
@@ -743,13 +942,40 @@ async function getQueue(){
   return {index: qi, items: Array.isArray(items) ? items : []};
 }
 let upNextBusy=false, upNextAt=0, upNextSig='';
-async function refreshUpNext(force){
-  const box = $('#npUpNext'); if (!box) return;
-  if (S.output>0) {                     // Sonos rooms play their own queue, which the Brennan can't list
-    const msg = `<div class="head"><b>Up next</b></div><div class="more">Playing on ${esc(outputName())} — tracks you queue go to that speaker's own queue, which can't be shown here.</div>`;
-    if (upNextSig !== 'sonos') { box.innerHTML = msg; upNextSig = 'sonos'; }
-    return;
+async function refreshSonosUpNext(box, force){
+  if (upNextBusy || (!force && Date.now()-upNextAt < 5000)) return;
+  upNextBusy=true; upNextAt=Date.now();
+  let q=null, err=null; try { q = await sonosQueue(); } catch(e){ err=e; } finally { upNextBusy=false; }
+  const el = $('#npUpNext'); if (!el || S.output<=0) return;
+  const room = esc(outputName());
+  if (err) {
+    const sig='sonos-err'; if (upNextSig===sig) return; upNextSig=sig;
+    el.innerHTML = `<div class="head"><b>Up next on ${room}</b></div><div class="more">Couldn’t read ${room}’s Sonos queue (${esc(err.message)}).</div>`; return;
   }
+  const items = sonosUpcoming(q);
+  const sig = JSON.stringify(['sonos', q.fromQueue, q.current, !!S.sonosPos?.shuffle, items.map(t=>t.n+t.title)]);
+  if (sig === upNextSig) return; upNextSig = sig;
+  if (!q.fromQueue) { el.innerHTML = q.total ? `<div class="head"><b>${room}’s queue</b></div><div class="more">${room} is playing something else right now (not its queue). ${q.total} track${q.total===1?'':'s'} waiting in its queue.</div>` : ''; return; }
+  if (!items.length) { el.innerHTML=''; return; }
+  const shown = items.slice(0, innerHeight>800 ? 10 : 6);
+  el.innerHTML = `<div class="head"><b>${S.sonosPos?.shuffle?'In the queue on':'Up next on'} ${room}</b><span class="more" style="padding:0">${S.sonosPos?.shuffle?'Shuffle is on — plays in random order':'Sonos queue'}</span></div>
+    <ol>${shown.map((t,i)=>`<li data-i="${i}"><span class="n">${i+1}</span><span class="t">${esc(cleanTrack(t.title))}${t.artist?` <small style="color:var(--text-3)">· ${esc(t.artist)}</small>`:''}</span>
+      ${i>0?`<button class="rowbtn" data-u title="Play next">${icon.up}</button>`:''}<button class="rowbtn" data-p title="Play now">${icon.play}</button><button class="rowbtn" data-x title="Remove from queue">${icon.trash}</button></li>`).join('')}</ol>
+    ${items.length>shown.length?`<div class="more">+ ${items.length-shown.length} more</div>`:''}`;
+  el.querySelectorAll('li').forEach(li=>{
+    const t=items[+li.dataset.i];
+    // positions shift as tracks finish, so re-read the queue and find the track again by position+title
+    const locate = async()=>{ const now=await sonosQueue(); const hit=now.items.find(x=>x.n===t.n && x.title===t.title) || now.items.find(x=>x.n>now.current && x.title===t.title); return [now, hit]; };
+    const act = fn => async()=>{ try { await fn(); } catch(e){ toast('Sonos: '+e.message); } setTimeout(()=>{ refreshUpNext(true); poll(); }, 400); };
+    li.querySelector('[data-p]').onclick = act(async()=>{ const [,h]=await locate(); if(!h) throw new Error('that track already played'); await sonosAct('play',{n:h.n}); toast('Playing '+t.title); });
+    li.querySelector('[data-x]').onclick = act(async()=>{ const [,h]=await locate(); if(!h) throw new Error('that track already played'); await sonosAct('remove',{n:h.n}); toast('Removed '+t.title); });
+    const u=li.querySelector('[data-u]'); if (u) u.onclick = act(async()=>{ const [now,h]=await locate(); if(!h) throw new Error('that track already played'); await sonosAct('move',{start:h.n, count:1, before:now.current+1}); toast(t.title+' plays next'); });
+  });
+}
+async function refreshUpNext(force){
+  if (L.show.upnext===false) return;
+  const box = $('#npUpNext'); if (!box) return;
+  if (S.output>0) return refreshSonosUpNext(box, force);
   if (upNextBusy || (!force && Date.now()-upNextAt < 5000)) return;
   upNextBusy=true; upNextAt=Date.now();
   let q=null; try { q = await getQueue(); } catch {} finally { upNextBusy=false; }
@@ -799,6 +1025,7 @@ async function addToPlaylistMenu(anchor, id, label){
 function itemMenu(anchor, id, label, extra=[]){
   openMenu(anchor, [
     {text:'Play', icon:icon.play, run:()=>play(id,label)},
+    ...(S.output>0 ? [{text:'Play next', icon:icon.queue, run:()=>playNext(id,label)}] : []),
     {text:'Add to Queue', icon:icon.queue, run:()=>queue(id,label)},
     {text:'Add to playlist…', icon:icon.plus, run:()=>addToPlaylistMenu(anchor,id,label)},
     ...extra
@@ -880,6 +1107,7 @@ function viewNow(){
           <button class="iconbtn" data-cmd="back" title="Previous"><svg class="i fill" viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
           <button class="big-play" id="npPlay" title="Play / Pause"></button>
           <button class="iconbtn" data-cmd="next" title="Next"><svg class="i fill" viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+          <button class="iconbtn surprise-btn" id="npSurprise" title="Surprise me — play a random song (R)"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.2" class="dot"/><circle cx="15.5" cy="15.5" r="1.2" class="dot"/><circle cx="12" cy="12" r="1.2" class="dot"/><circle cx="15.5" cy="8.5" r="1.2" class="dot"/><circle cx="8.5" cy="15.5" r="1.2" class="dot"/></svg></button>
           <button class="iconbtn" id="npMore" title="More">${icon.more}</button>
           <span class="grow"></span>
           <button class="out-btn" data-out title="Choose output"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><rect x="6" y="3" width="12" height="18" rx="2"/><circle cx="12" cy="14" r="3"/><circle cx="12" cy="7" r=".6"/></svg><span class="out-name">${esc(outputName())}</span></button>
@@ -897,6 +1125,7 @@ function viewNow(){
   bindVolume(main); bindOutputButtons(main);
   $('#npPlay').onclick = togglePlay;
   $('#npShuffle').onclick = toggleShuffle;
+  $('#npSurprise').onclick = surprise;
   main.querySelectorAll('[data-cmd]').forEach(b=>b.onclick=()=>transport(b.dataset.cmd));
   bindSeek($('#npSeek'));
   $('#npMore').onclick = e => {
@@ -1536,6 +1765,7 @@ async function applyPendingCdArt(){
 const VU_N = 18, VU_W = 280, VU_H = 52;              // 18 points ≈ the last 1.6 s
 const VU = { buf:[], hist:Array(VU_N).fill(0), phase:0, last:0, t:0, raf:0, playing:false };
 function vuFeed(vu, playing){
+  if (L.show.meter===false) return;
   const now=performance.now(), dt = VU.last ? now-VU.last : 1000; VU.last=now;
   VU.playing = !!playing && vu.some(v=>+v>0);
   if (VU.playing){
@@ -1586,11 +1816,9 @@ async function viewSettings(){
   S.status = st;
   const seg=(name,opts,cur)=>`<div class="seg" data-set="${name}">${opts.map(o=>`<button data-v="${esc(o)}" class="${String(cur)===o?'on':''}">${esc(o)}</button>`).join('')}</div>`;
   const gb = space? (space*1000/1e9).toFixed(1)+' GB free' : '—';
-  main.innerHTML = `<div class="view"><h1>Settings</h1><p class="sub">Playback, sound and connection</p>
+  main.innerHTML = `<div class="view"><h1>Settings</h1><p class="sub">Layout, playback, sound and connection</p>
   <div class="settings">
-    <div class="box"><h3>Appearance</h3>
-      <div class="set"><span class="lab">Theme</span>${(()=>{ const t=themePref(); return `<div class="seg" id="themeSeg">${[['dark','Dark'],['light','Light'],['system','Match system']].map(([v,l])=>`<button data-theme="${v}" class="${t===v?'on':''}">${l}</button>`).join('')}</div>`; })()}</div>
-    </div>
+    ${layoutBox()}
     <div class="box"><h3>Playback</h3>
       <div class="set"><span class="lab">Shuffle</span><button class="switch ${+st.random?'on':''}" id="sRandom" aria-label="Shuffle"></button></div>
       <div class="set"><span class="lab">Library order</span>${seg('order',['Alphabetical','Reverse','As ripped'], +st.sorted?'Alphabetical':+st.reversed?'Reverse':'As ripped')}</div>
@@ -1616,7 +1844,7 @@ async function viewSettings(){
       <div class="toolbar" style="margin:16px 0 0"><button class="btn ghost" onclick="rescan()">Scan network</button><button class="btn ghost" id="manualIp">Set address…</button></div>
     </div>
   </div></div>`;
-  main.querySelectorAll('#themeSeg button').forEach(btn=>btn.onclick=()=>{ main.querySelectorAll('#themeSeg button').forEach(x=>x.classList.toggle('on',x===btn)); applyTheme(btn.dataset.theme); });
+  bindLayoutBox();
   $('#sRandom').onclick = e => { const on=!e.currentTarget.classList.contains('on'); e.currentTarget.classList.toggle('on',on); api('setRandom',{random:on?1:0}); };
   $('#sEq').onclick = e => { const on=!e.currentTarget.classList.contains('on'); e.currentTarget.classList.toggle('on',on); api('equaliser',{enabled:on?1:0}); };
   main.querySelectorAll('.seg[data-set] button').forEach(b=>b.onclick=()=>{
@@ -1639,9 +1867,21 @@ async function viewSettings(){
 async function transport(cmd){ try { await api(cmd, sonosParam()); setTimeout(poll,250); } catch { toast('Couldn’t reach the Brennan'); } }
 function isPlaying(){ return S.output>0 ? !!S.sonosStatus?.playing : !!S.status?.playing; }
 function togglePlay(){ transport('play'); }   // `play` toggles play/pause on the unit
-function toggleShuffle(){ const on=!(+S.status?.random); api('setRandom',{random:on?1:0}); S.status && (S.status.random=on?'1':'0'); updateUI(); toast('Shuffle '+(on?'on':'off')); }
+// Shuffle belongs to whatever is playing: the Brennan's own setting for its speakers, or the
+// Sonos room's play mode when a Sonos room is the output (the Brennan's setting doesn't reach it).
+function shuffleOn(){ return S.output>0 ? !!S.sonosPos?.shuffle : !!+S.status?.random; }
+async function toggleShuffle(){
+  const on = !shuffleOn();
+  if (S.output>0) {
+    try { await sonosAct('shuffle',{on}); if (S.sonosPos) S.sonosPos.shuffle=on; updateUI(); toast(`Shuffle ${on?'on':'off'} for ${outputName()}`); }
+    catch(e){ toast('Couldn’t change shuffle on '+outputName()+': '+e.message); }
+    fetchSonosPos(sonosRoom()); upNextSig=null; refreshUpNext(true); return;
+  }
+  api('setRandom',{random:on?1:0}); S.status && (S.status.random=on?'1':'0'); updateUI(); toast('Shuffle '+(on?'on':'off'));
+}
 $('#playBtn').onclick=togglePlay; $('#prevBtn').onclick=()=>transport('back'); $('#nextBtn').onclick=()=>transport('next');
 $('#shuffleBtn').onclick=toggleShuffle;
+$('#surpriseBtn').onclick=surprise;
 $('#plNow').onclick=()=>go('now');
 $('#sideNp').onclick=()=>go('now');
 $('#sortBtn').onclick=e=>{ const st=S.status||{}; openMenu(e.currentTarget,[{label:'Library order'},
@@ -1651,8 +1891,14 @@ $('#sortBtn').onclick=e=>{ const st=S.status||{}; openMenu(e.currentTarget,[{lab
 
 function bindSeek(el){
   setRangeFill(el);
-  el.addEventListener('input',()=>{ S.seeking=true; setRangeFill(el); const st=S.status; if(st?.duration) { const t=st.duration*el.value/1000; ['#tIn','#npIn'].forEach(s=>{const x=$(s); if(x) x.textContent=fmt(t);}); } });
-  el.addEventListener('change',async()=>{ await api('seek',{pos:el.value}).catch(()=>{}); setTimeout(()=>S.seeking=false,1200); });
+  el.addEventListener('input',()=>{ S.seeking=true; setRangeFill(el); const {dur}=trackTimes(S.status||{}); if(dur) { const t=dur*el.value/1000; ['#tIn','#npIn'].forEach(s=>{const x=$(s); if(x) x.textContent=fmt(t);}); } });
+  el.addEventListener('change',async()=>{
+    if (S.output>0) {
+      const {dur}=trackTimes(S.status||{}); const secs=Math.round(dur*el.value/1000);
+      try { await sonosAct('seek',{seconds:secs}); if (S.sonosPos) Object.assign(S.sonosPos,{into:secs, at:performance.now()}); } catch(e){ toast('Sonos: '+e.message); }
+      fetchSonosPos(sonosRoom());
+    } else await api('seek',{pos:el.value}).catch(()=>{});
+    setTimeout(()=>S.seeking=false,1200); });
 }
 bindSeek($('#seek'));
 
@@ -1710,6 +1956,7 @@ document.addEventListener('keydown', e=>{
   if (e.target.matches('input,textarea,select') && e.key!=='Escape') return;
   if (e.key===' '){ e.preventDefault(); togglePlay(); }
   else if (e.key==='/'){ e.preventDefault(); $('#q').focus(); }
+  else if ((e.key==='r'||e.key==='R') && !e.metaKey && !e.ctrlKey && !e.altKey){ e.preventDefault(); surprise(); }
   else if (e.key==='ArrowRight' && e.shiftKey) transport('next');
   else if (e.key==='ArrowLeft' && e.shiftKey) transport('back');
 });
@@ -1730,7 +1977,13 @@ async function poll(){
     if (prevTrack && prevTrack !== st.trackid && S.route.name==='playlists' && !document.querySelector('.menu,.scrim'))
       setTimeout(()=>viewPlaylists({sel:S.route.sel, quiet:true}), 600);
     resolveOutput(st);
-    if (S.output>0) S.sonosStatus = await api('sonosStatus',{sonos:S.output-1}).catch(()=>null);
+    if (S.output>0) {
+      const prevTitle = S.sonosStatus?.title;
+      S.sonosStatus = await api('sonosStatus',{sonos:S.output-1}).catch(()=>null);
+      // the Brennan's status only times its own playback; ask the speaker for its position
+      const room = sonosRoom();
+      if (S.sonosStatus && (!S.sonosPos || S.sonosPos.room!==room || prevTitle!==S.sonosStatus.title || performance.now()-S.sonosPos.at > 4000)) fetchSonosPos(room);
+    } else S.sonosPos = null;
     updateUI();
     if (main.querySelector('.view > h1') && /Can’t reach/.test(main.querySelector('.view > h1').textContent)) render();
   } catch (e) {
@@ -1770,6 +2023,7 @@ function setArt(container, src, key, cacheKeyName){
 }
 
 function pickAccent(img){
+  if (ACCENTS[L.accent]) return applyFixedAccent();
   try {
     const c=document.createElement('canvas'); c.width=c.height=24; const x=c.getContext('2d');
     x.drawImage(img,0,0,24,24); const d=x.getImageData(0,0,24,24).data;
@@ -1792,7 +2046,59 @@ function pickAccent(img){
     } else resetAccent();
   } catch { resetAccent(); }
 }
-function resetAccent(){ const r=document.documentElement.style; r.removeProperty('--accent'); r.removeProperty('--accent-soft'); r.removeProperty('--accent-ink'); }
+function resetAccent(){ const r=document.documentElement.style; r.removeProperty('--accent'); r.removeProperty('--accent-soft'); r.removeProperty('--accent-ink'); applyFixedAccent(); }
+// A fixed accent (Settings → Layout & Look) replaces the colour picked from the album art.
+function applyFixedAccent(){
+  const pair = ACCENTS[L.accent]; if (!pair) return false;
+  const hex = isLightTheme() ? pair[1] : pair[0], n=parseInt(hex.slice(1),16), rgb=[n>>16,(n>>8)&255,n&255].join(',');
+  const r=document.documentElement.style;
+  r.setProperty('--accent', hex); r.setProperty('--accent-soft', `rgba(${rgb},${isLightTheme()?.12:.14})`);
+  r.setProperty('--accent-ink', isLightTheme() ? '#ffffff' : '#1a1206');
+  return true;
+}
+/* ---- Layout & Look ----
+   Per-browser settings (localStorage 'brennan.layout'), applied as attributes/classes on <html>
+   so CSS does the work. The <head> script applies the same thing before first paint. */
+function saveLayout(){ try { localStorage.setItem('brennan.layout', JSON.stringify(L)); } catch {} }
+function applyLayout(){
+  const r=document.documentElement;
+  r.dataset.art=L.art; r.dataset.menu=L.menu; r.dataset.density=L.density;
+  for (const [k] of SHOW_ITEMS) r.classList.toggle('hide-'+k, L.show[k]===false);
+  resetAccent(); S.npArtKey=null; S.lastTrackId=null; S.artVersion++;
+  if (S.status) updateUI();
+  requestAnimationFrame(()=>{ placeVu(); document.querySelectorAll('input[type=range]').forEach(setRangeFill); });
+  upNextSig=''; if (S.route?.name==='now') refreshUpNext(true);
+}
+function setLayout(patch){ L = { ...L, ...patch, show:{ ...L.show, ...(patch.show||{}) } }; saveLayout(); applyLayout(); }
+function resetLayout(){ L = JSON.parse(JSON.stringify(LAYOUT_DEFAULT)); saveLayout(); applyLayout(); }
+function layoutBox(){
+  const t=themePref();
+  const seg=(id,opts,cur)=>`<div class="seg" id="${id}">${opts.map(([v,l])=>`<button data-v="${v}" class="${cur===v?'on':''}">${l}</button>`).join('')}</div>`;
+  return `<div class="box" id="layoutBox"><h3>Layout &amp; look</h3><div class="layout-cols"><div>
+    <div class="set"><span class="lab">Theme</span><div class="seg" id="themeSeg">${[['dark','Dark'],['light','Light'],['system','Match system']].map(([v,l])=>`<button data-theme="${v}" class="${t===v?'on':''}">${l}</button>`).join('')}</div></div>
+    <div class="set"><span class="lab">Accent</span><div class="swatches" id="accentSw">
+      <button class="swatch art ${L.accent==='art'?'on':''}" data-a="art" title="Follow the album artwork">From artwork</button>
+      ${Object.entries(ACCENTS).map(([k,v])=>`<button class="swatch ${L.accent===k?'on':''}" data-a="${k}" title="${k[0].toUpperCase()+k.slice(1)}" aria-label="${k}" style="background:${isLightTheme()?v[1]:v[0]}"></button>`).join('')}
+    </div></div>
+    <div class="set"><span class="lab">Artwork size</span>${seg('artSeg',[['s','Small'],['m','Medium'],['l','Large'],['xl','Huge']],L.art)}</div>
+    <div class="set"><span class="lab">Menu<span class="note">Phones always use tabs at the bottom</span></span>${seg('menuSeg',[['side','Side'],['top','Top'],['bottom','Bottom']],L.menu)}</div>
+    <div class="set"><span class="lab">Density</span>${seg('densSeg',[['comfortable','Comfortable'],['compact','Compact']],L.density)}</div>
+    </div><div>
+    <div class="set"><span class="lab">Show</span></div>
+    <div class="showlist">${SHOW_ITEMS.map(([k,l])=>`<label><span>${l}</span><button class="switch ${L.show[k]!==false?'on':''}" data-show="${k}" aria-label="${l}"></button></label>`).join('')}</div>
+    <div class="toolbar" style="margin:14px 0 0;justify-content:flex-end"><button class="btn ghost" id="layoutReset">Reset layout</button></div>
+  </div></div></div>`;
+}
+function bindLayoutBox(){
+  const box=$('#layoutBox'); if (!box) return;
+  const segPick=(id,key)=>box.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{ box.querySelectorAll('#'+id+' button').forEach(x=>x.classList.toggle('on',x===b)); setLayout({[key]:b.dataset.v}); });
+  segPick('artSeg','art'); segPick('menuSeg','menu'); segPick('densSeg','density');
+  box.querySelectorAll('#accentSw .swatch').forEach(b=>b.onclick=()=>{ box.querySelectorAll('#accentSw .swatch').forEach(x=>x.classList.toggle('on',x===b)); setLayout({accent:b.dataset.a}); });
+  box.querySelectorAll('[data-show]').forEach(b=>b.onclick=e=>{ e.preventDefault(); const on=!b.classList.contains('on'); b.classList.toggle('on',on); setLayout({show:{[b.dataset.show]:on}}); });
+  box.querySelectorAll('#themeSeg button').forEach(btn=>btn.onclick=()=>{ box.querySelectorAll('#themeSeg button').forEach(x=>x.classList.toggle('on',x===btn)); applyTheme(btn.dataset.theme); box.outerHTML=layoutBox(); bindLayoutBox(); });
+  $('#layoutReset').onclick=()=>{ resetLayout(); box.outerHTML=layoutBox(); bindLayoutBox(); toast('Layout reset'); };
+}
+
 /* ---- Theme ---- */
 function themePref(){ try { return localStorage.getItem('brennan.theme') || 'dark'; } catch { return 'dark'; } }
 function isLightTheme(){ return document.documentElement.getAttribute('data-theme') === 'light'; }
@@ -1829,10 +2135,10 @@ function updateUI(){
   side.style.position='relative'; side.style.aspectRatio='1';
 
   // shuffle/sort
-  [$('#shuffleBtn'), $('#npShuffle')].forEach(b=>b&&b.classList.toggle('on', !!+st.random));
+  [$('#shuffleBtn'), $('#npShuffle')].forEach(b=>b&&b.classList.toggle('on', shuffleOn()));
 
   // time
-  const dur=+st.duration||0, into=+st.timeIntoTrack||0, seekable = S.output===0 && dur>0;
+  const { dur, into, seekable } = trackTimes(st);
   for (const el of [$('#seek'), $('#npSeek')]){ if(!el) continue; el.disabled=!seekable; if(!S.seeking){ el.value = dur? Math.round(into*1000/dur):0; setRangeFill(el); } }
   if (!S.seeking){ $('#tIn').textContent=fmt(into); }
   $('#tLen').textContent=fmt(dur);
