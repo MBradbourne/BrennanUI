@@ -578,7 +578,7 @@ nav button{position:relative}
       <button data-go="playlists"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h12M4 12h12M4 18h8"/><path d="M19 15v6M16 18h6"/></svg><span>Playlists</span></button>
       <button data-go="radio"><svg class="i" viewBox="0 0 24 24"><path d="M5 9a10 10 0 0 1 14 0M8 12a6 6 0 0 1 8 0"/><circle cx="12" cy="16" r="2"/></svg><span>Radio</span></button>
       <button data-go="cd" id="navCd"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3a9 9 0 0 1 9 9" opacity=".5"/></svg><span>CD</span><i class="nav-dot" id="cdDot"></i></button>
-      <button data-go="settings"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>Settings</span></button>
+      <button data-go="settings"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Settings</span></button>
     </nav>
     <div class="side-np" id="sideNp" title="Now playing"></div>
     <div class="device" id="device">
@@ -1840,11 +1840,22 @@ async function viewSettings(){
         <dt>Library</dt><dd>${esc(info.artists)} artists · ${esc(info.albums)} albums · ${esc(info.tracks)} tracks</dd>
         <dt>Disk</dt><dd>${gb}</dd>
         <dt>Network</dt><dd>${esc(st.zone||'—')}</dd>
+        <dt id="tzRowT" hidden>Server time zone</dt><dd id="tzRow" hidden></dd>
       </dl>
       <div class="toolbar" style="margin:16px 0 0"><button class="btn ghost" onclick="rescan()">Scan network</button><button class="btn ghost" id="manualIp">Set address…</button></div>
     </div>
   </div></div>`;
   bindLayoutBox();
+  // server edition only: which time zone the server is using, and where it came from
+  fetch('/local/timezone').then(r=>r.ok?r.json():null).then(j=>{ if(!j||!$('#tzRow')) return;
+    const mine = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    $('#tzRow').innerHTML = esc(j.tz + ({'TZ setting':' (set with TZ)','host clock':' (from the server)','browser':' (from a browser)','default':''}[j.source]||''))
+      + (j.source==='browser' && mine && mine!==j.tz ? ` <a href="#" id="tzMine" style="color:var(--accent);margin-left:6px">Use ${esc(mine)}</a>` : '');
+    $('#tzRow').hidden=false; $('#tzRowT').hidden=false;
+    const a=$('#tzMine'); if (a) a.onclick=async e=>{ e.preventDefault();
+      const r=await fetch('/local/timezone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tz:mine, force:true})}).then(r=>r.json()).catch(()=>null);
+      if (r) { $('#tzRow').textContent = r.tz+' (from a browser)'; toast('Server time zone: '+r.tz); } };
+  }).catch(()=>{});
   $('#sRandom').onclick = e => { const on=!e.currentTarget.classList.contains('on'); e.currentTarget.classList.toggle('on',on); api('setRandom',{random:on?1:0}); };
   $('#sEq').onclick = e => { const on=!e.currentTarget.classList.contains('on'); e.currentTarget.classList.toggle('on',on); api('equaliser',{enabled:on?1:0}); };
   main.querySelectorAll('.seg[data-set] button').forEach(b=>b.onclick=()=>{
@@ -2056,6 +2067,10 @@ function applyFixedAccent(){
   r.setProperty('--accent-ink', isLightTheme() ? '#ffffff' : '#1a1206');
   return true;
 }
+/* Server edition: tell the server this browser's time zone (it only uses it if it has none set). */
+try { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (tz) fetch('/local/timezone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tz})}).catch(()=>{}); } catch {}
+
 /* ---- Layout & Look ----
    Per-browser settings (localStorage 'brennan.layout'), applied as attributes/classes on <html>
    so CSS does the work. The <head> script applies the same thing before first paint. */
