@@ -7,6 +7,7 @@ it through the same HTTP interface the unit's built-in web page uses.
 - **Now Playing** with large album art, seek, volume and a VU meter
 - **Library**: artists (A–Z), albums (cover grid), album and artist pages, search
 - **Playlists**: play, add, remove, create; queue anything
+- **Surprise me**: the dice button plays a random song from your whole library (or press R)
 - **Queue**: "Up next" on Now Playing, with play-now and remove; the Playlists page stays in
   sync as the Brennan works through the queue
 - **Radio**: your presets plus the internet radio directory and station search
@@ -15,6 +16,7 @@ it through the same HTTP interface the unit's built-in web page uses.
 - **Artwork**: search Apple Music, Deezer and MusicBrainz for covers; find albums with
   missing, placeholder or low-resolution art and fix them one by one
 - **Settings**: shuffle, sort order, segue, bass/treble, EQ, rip format
+- **Layout & look**: theme, accent colour, artwork size, menu at the side/top/bottom, compact density, and show/hide for the meter, Up next, player bar and more
 - **Remembers where you were**: each sidebar section returns to the page, playlist and scroll
   position you left it on
 - **Light and dark themes**: Settings → Appearance (Dark, Light or Match system)
@@ -120,6 +122,20 @@ sidebar also gets a dot). The CD page shows:
 Ripping uses the same command as the Brennan's own page (`newRip`, with the chosen match's
 details). The format (FLAC/MP3) is set in Settings → Ripping.
 
+## Layout & look
+
+Settings → **Layout & look** lets each browser arrange the interface its own way:
+
+- **Theme**: dark, light or match the system.
+- **Accent**: follow the album artwork (default) or pick a fixed colour.
+- **Artwork size** on Now Playing: small, medium, large or huge.
+- **Menu**: down the side, across the top, or as tabs along the bottom. Phones always use bottom tabs.
+- **Density**: comfortable or compact (smaller rows and covers).
+- **Show**: turn the level meter, Up next, player bar, Surprise me button, sidebar artwork and the artwork glow on or off.
+
+Choices are saved in that browser, so a wall tablet and a laptop can look different. **Reset layout**
+puts everything back to the defaults.
+
 ## Sonos
 
 Use the output button (bottom right) to play on a Sonos room instead of the Brennan's own
@@ -127,9 +143,12 @@ speakers. Things to know:
 
 - The choice is remembered by room name, because the Brennan's list of rooms changes order as
   speakers come and go.
-- **Queueing while a Sonos room is the output sends tracks to that speaker's own queue**, not
-  the Brennan's Queue playlist, so they won't appear in Playlists or Up next. The UI says so
-  when this happens. Switch back to *Brennan speakers* to use the Brennan Queue.
+- **A Sonos room plays from its own Sonos queue** (the one the Sonos app shows). Playing an
+  album there loads it into that queue, and *Add to Queue* adds to the end of it. The launcher
+  reads that queue straight from the speaker, so **Up next** on Now Playing shows it, with
+  buttons to play a track now, move it to play next, or remove it. With a Sonos room as the
+  output, menus also offer **Play next**, and the "added" message has a *Play next* button.
+  This needs the launcher to reach the speakers on port 1400; it finds them automatically.
 - Rooms can appear more than once. Stereo pairs, subs and surrounds report as several devices
   with the same room name (only the lead one is offered), and the Brennan also keeps old
   entries when a speaker gets a new network address. Duplicates that can both play are shown
@@ -141,6 +160,7 @@ speakers. Things to know:
 
 - `brennan.py`: launcher (discovery, local web server, API proxy). Standard library only.
 - `artwork.py`: artwork search, apply/relay, and the missing-art scan
+- `sonos.py`: reads and edits Sonos room queues (talks to the speakers directly)
 - `ui/index.html`: the whole interface (single file, no build step)
 - `Start Brennan.command`: double-click launcher for macOS
 
@@ -158,7 +178,7 @@ speakers. Things to know:
   shifts the others; the UI remembers your selected playlist by name.
 - Sonos rooms are addressed by position in `status.sonos` (`sonos=<n>`, 1-based; 0 = the
   Brennan's own speakers).
-- Keyboard: Space = play/pause, `/` = search, Shift+←/→ = previous/next.
+- Keyboard: Space = play/pause, `/` = search, Shift+←/→ = previous/next, R = surprise me.
 
 ## License
 
