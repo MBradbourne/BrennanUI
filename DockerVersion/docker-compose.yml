@@ -18,10 +18,11 @@ services:
       # BRENNAN_IP: "192.168.1.50"    # skip scanning and use this address
       # BRENNAN_SUBNET: "192.168.1.0/24"  # scan this range instead of auto-detecting
       # BRENNAN_PASSWORD: "change-me" # ask for a password in the browser (recommended)
-      TZ: "America/New_York"
+      # TZ: "America/Chicago"         # time zone for the log; normally picked up automatically
 
     volumes:
       - brennan-data:/data            # remembers the Brennan's address and artwork settings
+      - /etc/localtime:/etc/localtime:ro   # use this server's time zone (remove on Docker Desktop for Mac/Windows)
 
 volumes:
   brennan-data:

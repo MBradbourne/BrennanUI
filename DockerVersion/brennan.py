@@ -50,6 +50,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import artwork  # noqa: E402
+import sonos  # noqa: E402
 
 APP_DIR = Path(__file__).resolve().parent
 UI_DIR = APP_DIR / "ui"
@@ -425,6 +426,58 @@ def sniff_image(body: bytes) -> str | None:
     return None
 
 
+RIP_LOG = {"entries": []}
+
+def rip_watch(ip: str, sent: dict) -> None:
+    """Record what the Brennan does in the 20 s after a rip request (shown at /local/rip-log)."""
+    RIP_LOG["entries"] = [sent]
+    for _ in range(20):
+        time.sleep(1)
+        try:
+            st = json.loads(artwork.device_call(ip, f"status&time={int(time.time()*1000)}", 5).decode("utf-8", "replace"))
+            row = {k: st.get(k) for k in ("cdloaded", "cdstatus", "background", "discid")}
+        except Exception as e:
+            row = {"error": str(e)}
+        row["t"] = round(time.time() - sent["at"], 1)
+        RIP_LOG["entries"].append(row)
+        if row.get("cdloaded") is False and len(RIP_LOG["entries"]) > 3:
+            log(f"rip: the Brennan reports the disc ejected ({row.get('cdstatus')})")
+            break
+
+
+# ---------------------------------------------------------------- time zone
+# Containers run on UTC unless told otherwise. In order of preference the server uses:
+#   1. the TZ environment variable,  2. the host's clock zone (/etc/localtime mounted in),
+#   3. the zone of the first browser that opens the page (remembered in the settings file).
+TZ_STATE = {"tz": "", "source": ""}
+
+
+def _zone_ok(name: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9_+\-]+(/[A-Za-z0-9_+\-]+){0,2}", name or "")) and \
+        Path("/usr/share/zoneinfo", name).is_file()
+
+
+def apply_tz(name: str) -> None:
+    os.environ["TZ"] = name
+    if hasattr(time, "tzset"):
+        time.tzset()
+
+
+def init_timezone(cfg: dict) -> None:
+    if os.environ.get("TZ"):
+        TZ_STATE.update(tz=os.environ["TZ"], source="TZ setting")
+        return
+    if time.timezone != 0 or time.altzone != 0 or time.tzname[0] not in ("UTC", "GMT", "UCT"):
+        TZ_STATE.update(tz=time.strftime("%Z"), source="host clock")
+        return
+    saved = cfg.get("timezone", "")
+    if _zone_ok(saved):
+        apply_tz(saved)
+        TZ_STATE.update(tz=saved, source="browser")
+    else:
+        TZ_STATE.update(tz="UTC", source="default")
+
+
 class Handler(BaseHTTPRequestHandler):
     device: Device = None  # set at startup
     library: "Library" = None
@@ -491,6 +544,18 @@ class Handler(BaseHTTPRequestHandler):
             if not (artist or album):
                 return self.send_json(400, {"error": "artist or album required"})
             return self.send_json(200, artwork.search(artist, album))
+        if path == "/local/sonos/queue":
+            q = urllib.parse.parse_qs(parsed.query)
+            return self.sonos_call(lambda: self.sonos.queue(q.get("room", [""])[0]))
+        if path == "/local/timezone":
+            return self.send_json(200, TZ_STATE)
+        if path == "/local/sonos/position":
+            q = urllib.parse.parse_qs(parsed.query)
+            return self.sonos_call(lambda: self.sonos.position(q.get("room", [""])[0]))
+        if path == "/local/sonos/rooms":
+            return self.sonos_call(lambda: {"rooms": list(self.sonos.refresh(force=True).values())})
+        if path == "/local/rip-log":
+            return self.send_json(200, RIP_LOG)
         if path == "/local/cd-lookup":
             q = urllib.parse.parse_qs(parsed.query)
             return self.send_json(200, artwork.cd_lookup(q.get("discid", [""])[0]))
@@ -513,6 +578,22 @@ class Handler(BaseHTTPRequestHandler):
             # POST pass-through (used by CD ripping: newRip takes the disc's metadata as a form)
             return self.proxy_post(urllib.parse.urlsplit(self.path).query, body,
                                    self.headers.get("Content-Type", "application/octet-stream"))
+        if path == "/local/timezone":
+            # a browser reports its zone; used only when nothing better is configured
+            try:
+                req = json.loads(body or b"{}")
+            except Exception:
+                req = {}
+            tz, force = str(req.get("tz", "")), bool(req.get("force"))
+            # the first browser sets it; after that only "Use this browser's time zone" changes it
+            allowed = TZ_STATE["source"] == "default" or (force and TZ_STATE["source"] == "browser")
+            if allowed and _zone_ok(tz) and tz != TZ_STATE["tz"]:
+                apply_tz(tz)
+                TZ_STATE.update(tz=tz, source="browser")
+                self.device.cfg["timezone"] = tz
+                save_config(self.device.cfg)
+                log(f"time zone set to {tz} (from a browser)")
+            return self.send_json(200, TZ_STATE)
         if path == "/local/art-upload":
             qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             return self.art_set(qs.get("id", ["0"])[0], data=body, expect=qs.get("expect", [""])[0])
@@ -520,6 +601,25 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(body or b"{}")
         except Exception:
             data = {}
+        if path.startswith("/local/sonos/"):
+            room = str(data.get("room", ""))
+            def num(k, d=0):
+                try:
+                    return int(data.get(k, d))
+                except (TypeError, ValueError):
+                    return d
+            act = path.rsplit("/", 1)[-1]
+            if act == "move":
+                return self.sonos_call(lambda: (self.sonos.move(room, num("start"), max(1, num("count", 1)), num("before")), {"ok": True})[1])
+            if act == "remove":
+                return self.sonos_call(lambda: (self.sonos.remove(room, num("n")), {"ok": True})[1])
+            if act == "shuffle":
+                return self.sonos_call(lambda: {"playMode": self.sonos.set_shuffle(room, bool(data.get("on")))})
+            if act == "seek":
+                return self.sonos_call(lambda: (self.sonos.seek(room, num("seconds")), {"ok": True})[1])
+            if act == "play":
+                return self.sonos_call(lambda: (self.sonos.play_track(room, num("n")), {"ok": True})[1])
+            return self.send_json(404, {"error": "unknown sonos action"})
         if path == "/local/art-set":
             return self.art_set(data.get("id"), url=str(data.get("url", "")).strip(), expect=str(data.get("expect", "")))
         if path in ("/local/art-placeholder", "/local/art-not-placeholder"):
@@ -606,6 +706,15 @@ class Handler(BaseHTTPRequestHandler):
         ctype = MIME.get(target.suffix.lower(), "application/octet-stream")
         self.send_bytes(200, target.read_bytes(), ctype, {"Cache-Control": "no-cache"})
 
+    def sonos_call(self, fn):
+        try:
+            return self.send_json(200, fn())
+        except sonos.SonosError as e:
+            return self.send_json(502, {"error": str(e)})
+        except Exception as e:  # malformed reply etc.
+            log(f"sonos: {e!r}")
+            return self.send_json(502, {"error": f"Sonos request failed: {e}"})
+
     def proxy_post(self, query: str, body: bytes, ctype: str):
         ip = self.device.ip
         if not ip:
@@ -624,7 +733,13 @@ class Handler(BaseHTTPRequestHandler):
         except (urllib.error.URLError, socket.timeout, ConnectionError, OSError) as e:
             self.device.report_failure()
             return self.send_json(502, {"error": "device_unreachable", "detail": str(e)})
-        log(f"{cmd} sent to the Brennan")
+        log(f"{cmd} sent to the Brennan; it answered {out[:200]!r}")
+        if cmd == "newRip":
+            m = re.search(rb'name="rip"\r\n\r\n(.*?)\r\n--', body, re.S)
+            sent = {"at": time.time(), "sent": (m.group(1) if m else body[:4000]).decode("utf-8", "replace"),
+                    "answer": out[:2000].decode("utf-8", "replace")}
+            log("rip metadata: " + sent["sent"][:600])
+            threading.Thread(target=rip_watch, args=(ip, sent), daemon=True).start()
         self.library.bump()
         return self.send_bytes(200, out, rtype, {"Cache-Control": "no-store"})
 
@@ -716,8 +831,10 @@ def main():
         sys.exit(f"UI not found at {UI_DIR}/index.html")
 
     dev = Device(args.subnet, args.ip)
+    init_timezone(dev.cfg)
     Handler.device = dev
     Handler.library = Library(dev)
+    Handler.sonos = sonos.Sonos(arp_candidates)
 
     def save_placeholders(placeholders, allowed):
         dev.cfg["placeholder_hashes"] = placeholders
@@ -732,6 +849,7 @@ def main():
     except OSError as e:
         sys.exit(f"Can't listen on {args.host}:{args.port} ({e}). Is something else using that port?")
     log(f"config: {CONFIG_PATH}")
+    log(f"time zone: {TZ_STATE['tz']} ({TZ_STATE['source']})")
     if args.host in ("0.0.0.0", "::"):
         addrs = sorted({str(i.ip) for i in local_networks()}) or ["<this-machine's-IP>"]
         for a in addrs:

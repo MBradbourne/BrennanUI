@@ -52,6 +52,7 @@ Screen** for an app-style icon that opens full-screen.
 | `BRENNAN_RELAY_HOST` | *(unset)* | bridge networking only — see below |
 | `BRENNAN_RELAY_PORT` | `8766` | bridge networking only — see below |
 | `BRENNAN_SONOS_HOSTS` | *(found automatically)* | bridge networking only: a Sonos speaker address or two, e.g. `192.168.68.40`, so the Sonos queue view works |
+| `TZ` | *(automatic)* | time zone for the server's log, e.g. `America/Chicago` — normally not needed, see below |
 
 ### Networking: host mode vs. bridge mode
 
@@ -70,6 +71,18 @@ host networking) works with two adjustments, both shown commented-out in
   -lived web server. In bridge mode that needs a published port (`8766:8766`) and the
   server's LAN address in `BRENNAN_RELAY_HOST`. Without these, artwork still works whenever
   the Brennan can fetch the image directly, but "Choose file…" uploads won't.
+
+### Time zone
+
+Containers run on UTC unless told otherwise, so the server picks its time zone up by itself, in
+this order:
+
+1. `TZ` if you set it in `docker-compose.yml`;
+2. the server's own time zone, via the `/etc/localtime` line in `docker-compose.yml` (Linux);
+3. otherwise, the time zone of the first browser that opens the page, remembered in `/data`.
+
+Settings → Connection shows which one is in use. If it came from a browser, a **Use …** link
+there switches it to the time zone of the browser you're on.
 
 ## Run it without Docker
 

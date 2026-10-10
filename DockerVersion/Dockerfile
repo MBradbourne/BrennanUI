@@ -2,12 +2,13 @@
 FROM python:3.12-slim
 
 # iproute2: lets the launcher see the real subnet (e.g. a /22) for discovery
+# tzdata: time zone names (TZ=..., or picked up from the host or a browser)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends iproute2 \
+ && apt-get install -y --no-install-recommends iproute2 tzdata \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY brennan.py artwork.py ./
+COPY brennan.py artwork.py sonos.py ./
 COPY ui/ ./ui/
 
 ENV BRENNAN_HOST=0.0.0.0 \
