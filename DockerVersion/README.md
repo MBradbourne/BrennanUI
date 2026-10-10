@@ -18,7 +18,7 @@ phone, tablet or computer on your home network** while the server is running.
 | Many devices at once | one browser | one shared status poll for every open page |
 | Phone layout | basic | tab bar, compact player, touch-friendly rows, home-screen icon |
 
-Everything else (discovery, artwork tools, queue, Sonos, themes, CD ripping) is the same code.
+Everything else (discovery, artwork tools, queue, Sonos, layout & look, CD ripping, Surprise me) is the same code.
 
 ## Run it with Docker (recommended)
 
@@ -51,6 +51,7 @@ Screen** for an app-style icon that opens full-screen.
 | `BRENNAN_CONFIG` | `/data/brennan_ui.json` | where settings are saved |
 | `BRENNAN_RELAY_HOST` | *(unset)* | bridge networking only — see below |
 | `BRENNAN_RELAY_PORT` | `8766` | bridge networking only — see below |
+| `BRENNAN_SONOS_HOSTS` | *(found automatically)* | bridge networking only: a Sonos speaker address or two, e.g. `192.168.68.40`, so the Sonos queue view works |
 
 ### Networking: host mode vs. bridge mode
 
@@ -102,6 +103,7 @@ other's playback, just as with the Brennan's own web page.
 
 - `brennan.py` — server: discovery, web server, API proxy, shared status cache, optional password
 - `artwork.py` — artwork search, apply/relay (with bridge-mode relay support), missing-art scan
+- `sonos.py` — reads and edits Sonos room queues (talks to the speakers directly)
 - `ui/index.html` — the interface (single file); `ui/icon-180.png` — home-screen icon
 - `Dockerfile`, `docker-compose.yml`, `.dockerignore`
 
