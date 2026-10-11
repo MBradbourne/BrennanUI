@@ -36,6 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import artwork  # noqa: E402
+import sonos  # noqa: E402
 
 APP_DIR = Path(__file__).resolve().parent
 UI_DIR = APP_DIR / "ui"
@@ -393,6 +394,25 @@ def sniff_image(body: bytes) -> str | None:
     return None
 
 
+RIP_LOG = {"entries": []}
+
+def rip_watch(ip: str, sent: dict) -> None:
+    """Record what the Brennan does in the 20 s after a rip request (shown at /local/rip-log)."""
+    RIP_LOG["entries"] = [sent]
+    for _ in range(20):
+        time.sleep(1)
+        try:
+            st = json.loads(artwork.device_call(ip, f"status&time={int(time.time()*1000)}", 5).decode("utf-8", "replace"))
+            row = {k: st.get(k) for k in ("cdloaded", "cdstatus", "background", "discid")}
+        except Exception as e:
+            row = {"error": str(e)}
+        row["t"] = round(time.time() - sent["at"], 1)
+        RIP_LOG["entries"].append(row)
+        if row.get("cdloaded") is False and len(RIP_LOG["entries"]) > 3:
+            log(f"rip: the Brennan reports the disc ejected ({row.get('cdstatus')})")
+            break
+
+
 class Handler(BaseHTTPRequestHandler):
     device: Device = None  # set at startup
     library: "Library" = None
@@ -431,6 +451,16 @@ class Handler(BaseHTTPRequestHandler):
             if not (artist or album):
                 return self.send_json(400, {"error": "artist or album required"})
             return self.send_json(200, artwork.search(artist, album))
+        if path == "/local/sonos/queue":
+            q = urllib.parse.parse_qs(parsed.query)
+            return self.sonos_call(lambda: self.sonos.queue(q.get("room", [""])[0]))
+        if path == "/local/sonos/position":
+            q = urllib.parse.parse_qs(parsed.query)
+            return self.sonos_call(lambda: self.sonos.position(q.get("room", [""])[0]))
+        if path == "/local/sonos/rooms":
+            return self.sonos_call(lambda: {"rooms": list(self.sonos.refresh(force=True).values())})
+        if path == "/local/rip-log":
+            return self.send_json(200, RIP_LOG)
         if path == "/local/cd-lookup":
             q = urllib.parse.parse_qs(parsed.query)
             return self.send_json(200, artwork.cd_lookup(q.get("discid", [""])[0]))
@@ -458,6 +488,25 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(body or b"{}")
         except Exception:
             data = {}
+        if path.startswith("/local/sonos/"):
+            room = str(data.get("room", ""))
+            def num(k, d=0):
+                try:
+                    return int(data.get(k, d))
+                except (TypeError, ValueError):
+                    return d
+            act = path.rsplit("/", 1)[-1]
+            if act == "move":
+                return self.sonos_call(lambda: (self.sonos.move(room, num("start"), max(1, num("count", 1)), num("before")), {"ok": True})[1])
+            if act == "remove":
+                return self.sonos_call(lambda: (self.sonos.remove(room, num("n")), {"ok": True})[1])
+            if act == "shuffle":
+                return self.sonos_call(lambda: {"playMode": self.sonos.set_shuffle(room, bool(data.get("on")))})
+            if act == "seek":
+                return self.sonos_call(lambda: (self.sonos.seek(room, num("seconds")), {"ok": True})[1])
+            if act == "play":
+                return self.sonos_call(lambda: (self.sonos.play_track(room, num("n")), {"ok": True})[1])
+            return self.send_json(404, {"error": "unknown sonos action"})
         if path == "/local/art-set":
             return self.art_set(data.get("id"), url=str(data.get("url", "")).strip(), expect=str(data.get("expect", "")))
         if path in ("/local/art-placeholder", "/local/art-not-placeholder"):
@@ -544,6 +593,15 @@ class Handler(BaseHTTPRequestHandler):
         ctype = MIME.get(target.suffix.lower(), "application/octet-stream")
         self.send_bytes(200, target.read_bytes(), ctype, {"Cache-Control": "no-cache"})
 
+    def sonos_call(self, fn):
+        try:
+            return self.send_json(200, fn())
+        except sonos.SonosError as e:
+            return self.send_json(502, {"error": str(e)})
+        except Exception as e:  # malformed reply etc.
+            log(f"sonos: {e!r}")
+            return self.send_json(502, {"error": f"Sonos request failed: {e}"})
+
     def proxy_post(self, query: str, body: bytes, ctype: str):
         ip = self.device.ip
         if not ip:
@@ -562,7 +620,13 @@ class Handler(BaseHTTPRequestHandler):
         except (urllib.error.URLError, socket.timeout, ConnectionError, OSError) as e:
             self.device.report_failure()
             return self.send_json(502, {"error": "device_unreachable", "detail": str(e)})
-        log(f"{cmd} sent to the Brennan")
+        log(f"{cmd} sent to the Brennan; it answered {out[:200]!r}")
+        if cmd == "newRip":
+            m = re.search(rb'name="rip"\r\n\r\n(.*?)\r\n--', body, re.S)
+            sent = {"at": time.time(), "sent": (m.group(1) if m else body[:4000]).decode("utf-8", "replace"),
+                    "answer": out[:2000].decode("utf-8", "replace")}
+            log("rip metadata: " + sent["sent"][:600])
+            threading.Thread(target=rip_watch, args=(ip, sent), daemon=True).start()
         self.library.bump()
         return self.send_bytes(200, out, rtype, {"Cache-Control": "no-store"})
 
@@ -619,6 +683,7 @@ def main():
     dev = Device(args.subnet, args.ip)
     Handler.device = dev
     Handler.library = Library(dev)
+    Handler.sonos = sonos.Sonos(arp_candidates)
 
     def save_placeholders(placeholders, allowed):
         dev.cfg["placeholder_hashes"] = placeholders
